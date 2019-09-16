@@ -1,0 +1,438 @@
+---
+title: "Homework 1"
+author: "Andrew Boschee"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+```{r, echo=FALSE}
+# load libraries
+library(reshape)
+library(ggplot2)
+library(HSAUR3)
+library(dplyr)
+library(MASS)
+#install.packages('GGally)
+library(GGally)
+#install.packages('plotrix')
+library(plotrix)
+```
+*No collaborators, *
+*Outside Resources: The Book of R (Q6), R for Data Science(Q5), R Graphics Cookbook(Q4), Rdocumentation.com(Q12, Q14)* 
+
+1. Question 1.1, pg. 23 in Handbook \textit{this question will require you to make some assumptions. List your assumptions and how you interpreted the question.}
+
+Task: Calculate the median profit for companies in the US and median profit for the companies in the UK, France, and Germany. 
+
+Result: The first assumption that I made was to get the median profit for each country individually. I could see one also thinking of finding the median of UK, France, and Germany as one, but I thought it is more informative to look at them individually. I also removed missing values setting na.rm = TRUE in the tapply function. The tapply function allowed me to simply take the profits column and country column and apply the median function with NA values removed.
+
+Final results show that the US had the highest median profits just ahead of Germany by .01 billion US dollars and France with the lowest at .19 billion. The output shows the four countries with their median profit underneath the country name. The US economy was strong at this time (Forbes dataset comes from year 2004) so I don't have concerns about the results.
+
+```{r, echo=FALSE}
+# load forbes dataset
+data('Forbes2000')
+
+# find median profits of each country with no missing values
+mprofits <- tapply(Forbes2000$profits, Forbes2000$country, median, na.rm=TRUE)
+```
+
+```{r, echo=FALSE}
+# output profits of specified countries
+mprofits[c('United States', 'United Kingdom', 'France', 'Germany')]
+```
+2. Question 1.2, pg. 23 in Handbook
+
+Task: Find all German companies with negative profit.
+
+Result: Using the subset function, I found all companies from Germany and stored them in GermanComp variable. To retrieve the companies with negative profits, I once again used the subset function but rather than filtering by country, I filtered by profits less than 0.
+
+The final output contained 13 companies and since there was no other information specifically requested, I only output the name of the companies with negative profits. To get a little more insight, there were 65 companies in the GermanComp variable. 13 out of the 65 German companies had negative profits (20%), which was a little more than I was expecting with this being the top companies from Forbes dataset.
+
+```{r, echo=FALSE}
+# Filter to only companies in Germany
+GermanComp <- subset(Forbes2000, country == 'Germany')
+
+# filter down again to companies with no profit
+GermanCompProfit <- subset(GermanComp, profits < 0)
+ #output just country names from filtered data
+GermanCompProfit['name']
+```
+
+3. Question 1.3, pg. 23 in Handbook
+
+Task: To which business category do most of the Bermuda island companies belong?
+
+Result: Using similar approach to questions one and two, I used the subset function to filter down to companies with 'Bermuda' in the country column. Taking that outcome, I used the names and which.max function on the category column of the table derived from the subset function.
+
+The final output resulted in the Insurance industry being the major category for Bermuda.
+
+```{r, echo=FALSE}
+# filter to country Bermuda
+BermudaComp <- subset(Forbes2000, country == 'Bermuda')
+# output name of categorty with highest count
+names(which.max(table(BermudaComp$category)))
+```
+
+4. Question 1.4, pg. 23 in Handbook
+
+Task: For the 50 companies in the Forbes data set with highest profits, plot sales against assets labeling each point with the appropriate country name.
+
+Result: To retrieve the top fifty companies, I used the order function on the profits column in descinding order storing results in 'Top50' variable (even though not technically the top 50 yet). Then, to actually get the top 50 companies I selected just the first 50 rows of that ordered list and assigned it to 'Top50'. While the question doesn't ask specifically for the list, I think it is useful to get a glimpse so that is displayed.
+
+I then plotted the results using base R and ggplot. Some points were getting cut out so I added in xlim, ylim parameters to extend the plots and modified the text to abbreviate the country names for readability. Labels were added to plots as well to make them clear and informative.
+
+Using ggplot, I modified the countries to be distinguished by color and added in geom_point because I thought it needed just a little more detail. These points are so dense to the point that I don't think more modifications would make to much of a difference. If this was a presentation, I would possibly make the plot significantly bigger, but I believe it is ok here to get the point across and a general outline.
+
+A big take-away here is that the US has some outliers in comparison to other countries and that there is a negative correlation between assets and sales. That correlation brings more business perspective thoughts on most-likely maturity of the businesses with them being 'cash-cows' and more mature with signficant amount of assets in comparison to sales. The companies higher sales and less assets are most-likely younger and have higher debt and less assets as they grow.
+
+```{r, echo=FALSE}
+# arrange profits column in descending order
+Top50 <- order(-Forbes2000$profits)
+# filter to first 50 rows
+Top50 <- Forbes2000[Top50[1:50],]
+# ouutput names of companies
+Top50['name']
+```
+```{r, echo=FALSE}
+# plot sales on x-axis and assets on y- asis with labels and boundaries
+plot(Top50$sales, Top50$assets, 
+     main = '50 Most Profitable Companies', xlab = 'Sales (billions USD)', ylab = 'Assets (billions USD)', xlim = c(0,300), ylim= c(0,1400))
+# modify labeling of countries with abbreviate function for labels specifying length of 2, and location of label relative to point
+text(Top50$sales, Top50$assets, 
+     labels = abbreviate(Top50$country, strict = TRUE, minlength=2), pos=4, cex=.8)
+```
+
+```{r, echo=FALSE}
+# plot specifying data, x-axis, and y-axis
+g <- ggplot(data = Top50, aes(x = sales, y= assets))
+# add geom_text to color-code country and make each point labeled by country name
+# add geom_ypoint to help see the actual location of points
+# use ylab for labeling and xlim to expand plot for readability
+g + geom_text(aes(label=country, color = country)) + 
+    geom_point()+
+    ylab('Assets (Billion USD)') + xlab('Sales (Billion USD)') + xlim(-50, 300)
+
+```
+
+5. Question 1.5, pg. 23 in Handbook
+
+Task: Find the average sales for companies in each country from Forbes data set. Find number of companies in each country with profits above five billion US dollars.
+
+Result: With tasks having a little more complexity, it is easier to use dplyr library than base R for more specific tasks. I enjoy dplyr packages since it has more simple logic and is somewhat similar to SQL that is useful for these type of tasks.
+
+The first task required grouping by country from Forbes2000 data and then using mean function in side the summarize function to pull the average sales. The second task was fairly similar requiring the group by country but also had to be filtered by sales and applying the count function. To get a little more insight on the data, I also applied sort to have the country with the highest count at the top of the list.
+
+The US stood out quite a bit in this result which was a little bit of a surprise. After thinking about it and looking back, many of the companies from the prior questions were from the US so they make up a high proportion of the list.
+
+```{r, echo=FALSE}
+# group by country and find mean of sales with missing values removed.
+avgSales <- Forbes2000 %>%
+    group_by(country) %>%
+    summarize(mean = mean(sales, na.rm=TRUE))
+
+# filter to sales, group by country, and find count by country
+minAvgSales <- Forbes2000 %>%
+    filter(sales > 5) %>%
+    group_by(country) %>%
+    count(sort=TRUE)
+
+avgSales
+minAvgSales
+```
+
+Task 6. Question 2.1, pg. 39 in Handbook (see Chapter 6 of R Graphcis Cookbook for GGPlot)
+
+Results: This topic could be explored in many different ways. The first thing that stands out is spending in general. Males have more than double the average spending of females, 1507.35 and 3688.35 respectively. It would be helpful if we had the income of these individuals as it could provide more insight on spending in general. 
+
+I thought that a boxplot would be a good way to show all of the variables at once and compare the proportions of each spending type. Both genders have outliers in goods but it looks like males are spread out much more in total spending compared to females with the median sitting fairly low on the plot. This is actually true in all categories.
+
+I believe much more analysis could be done on this topic and my main takeaway is that there is a significant difference in most categories. Since this exercise is mainly for graphical purposes I will not perform an analysis of variance, but I believe that would give reinforcement to my beliefs on the significant differences.
+
+```{r, echo=FALSE}
+# load data
+data("household")
+
+# make total column summing up expenses
+household$total <- household$housing+ household$food+ household$goods + household$service
+
+# group by gender
+householdGender <- household %>%
+    group_by(gender)
+
+# find mean of total column from householdGender variable
+householdMeanByGender <- householdGender %>%
+    summarize(mean = mean(total))
+
+# Use melt function to reshape data allowing analysis of other variables by gender
+householdGenderType <- melt(household, id.vars = c('gender'))
+
+# boxplot with gender and value(dollars) as axes with each expense type having distinct color filling
+ggplot(householdGenderType, aes(x=gender, y=value, fill=variable)) +
+    geom_boxplot() +
+    ggtitle('Mean Spending by Gender')
+    
+```
+
+7. Question 2.3, pg. 41 in Handbook (see Chapter 6 of R Graphcis Cookbook for GGPlot)
+
+Task: Mortality rates per 100,000 from male suicides for a number of age groups and a number of countries are given in table 2.5. Counstruct side-by-side box plots for the data from different age groups, and common on what the graphic tells us about the data.
+
+Results: Formatting the data for ggplot was the tricky part with this question. Using the simple boxplot function was very straightforward and is very informative after adding labels and a title. For ggplot, there may have been a cleaner way to go about this but I ended up adding a country column by using rownames function on the dataset and removing the rownames. This allowed me to use the melt function with the new column as the id variable. 
+
+The box plots are informative on a clear increase of median frequency as age increases but the interquartile range starts to expand until you get to the final age group where the interquartile range slightly decreses. My first assumption is that this may be explained by more deaths from natural causes rather than suicides. Just from a glimpse at the data set, this would be interesting data to explore seeing such a large difference in suicide rates by country.
+
+```{r}
+# load dataset
+data('suicides2')
+
+# base R boxplot of suicides by age group per 100,000 individuals
+boxplot(suicides2, main='Male Suicide Rate by Age Groups', xlab='Age Group', ylab='Frequency per 100,000')
+
+# make dataset a dataframe
+as.data.frame(suicides2)
+
+# add country column derived from the rownames
+suicides2$country <- rownames(suicides2)
+
+# get rid of rownames column
+rownames(suicides2) <- NULL
+
+# reshape dataframe to analyze suicide rates by country with ggplot
+suicides2 <-melt(suicides2, id.vars = 'country')
+
+# ggplot version of previous boxplot
+ggplot(suicides2, aes(x=variable, y=value))+geom_boxplot() + labs(title='Male Suicide Rate by Age Groups', x='Age Group', y='Frequency per 100,000')
+```
+
+
+Task 8: Using a single R expression, calculate the median absolute deviation, $1.4826\cdot median|x-\mu|$, where $\mu$ is the sample median. Use the dataset \textbf{chickwts}. Use the R function mad() to verify your answer.
+
+Result: This was a pretty clear problem and the main hurdle here is with parentheses. Using only the weight column, median function, and abs function, I was able to get output that lined up with calling mad function on the chickwts weight column (commented out).
+
+```{r, echo=FALSE}
+
+# load dataset
+data("chickwts")
+#summary(chickwts)
+
+# use median() and abs() function to build formula for mean absolute deviation
+madChickweight <- 1.4826 * median(abs(chickwts$weight - median(chickwts$weight)))
+
+#mad(chickwts$weight)
+madChickweight
+```
+
+
+Task 9. Using the data matrix \textbf{state.x77}, find the state with the minimum per capita income in the New England region as defined by the factor \textit{state.division}. Use the vector \textit{state.name} to get the state name.
+
+Results: Got slightly slowed down not taking into account that state.division is a factor and tried to do some unnecessary data manipulation and filtering. After re-reading instructions and seeing I was making things too complicated, I stuck with using 'dplyr' library to mutate the data instead which I believe is more organized and simple. Similar to previous questions, dplyr library is very handy on filtering the dataset and storing results in new variable to explore and manipulate.
+
+The final outcome resulted in Maine having the minimum per capita income from the New England region.
+
+```{r, echo=FALSE}
+# load dataset
+data('state')
+
+# use cbind to join tables
+allStates <- cbind.data.frame(state.x77, state.name)
+allStates <- cbind.data.frame(allStates, state.division)
+
+# use mutate_if to change factor to character
+allStates <- allStates %>%
+    mutate_if(is.factor, as.character)
+
+# filter to state division in New England
+newEngland <- allStates %>%
+    filter(state.division == 'New England')
+
+# filter to the state with minimum income    
+minIncomeNewEngland <- newEngland %>%
+    filter(Income == min(Income))
+
+minIncomeNewEngland$state.name
+```
+
+Task 10. Use subscripting operations on the dataset \textbf{Cars93} to find the vehicles with highway mileage of less than 25 miles per gallon (variable \textit{MPG.highway}) and weight (variable \textit{Weight}) over 3500lbs. Print the model name, the price range (low, high), highway mileage, and the weight of the cars that satisfy these conditions.
+
+Results: Was actually a little surprised at how simple this task was. Usually I would use dplyr package for some type of filtering like this but R makes it fairly easy to get the desired output in a single expression. 
+
+The final output contains 14 rows that meet the requirements from the question.
+
+```{r, echo=FALSE}
+# load dataset
+data('Cars93')
+#summary(Cars93)
+
+# filter to cars with MPG.highway under 25 and and weight greater than 3500
+# Second argument specifying a vector of the columns that are requested
+Cars93[(Cars93$MPG.highway < 25) & (Cars93$Weight > 3500), c('Model','Min.Price', 'Max.Price','MPG.highway', 'Weight')]
+```
+
+Task 11. Form a matrix object named \textbf{mycars} from the variables \textit{Min.Price, Max.Price, MPG.city, MPG.highway, EngineSize, Length, Weight} from the \textbf{Cars93} dataframe from the \textbf{MASS} package. Use it to create a list object named \textit{cars.stats} containing named components as follows:
+
+a) A vector of means, named \textit{Cars.Means}
+```{r}
+# load dataset
+data('Cars93')
+
+# make matrix of all rows and specified columns
+mycars <- as.matrix(Cars93[,c('Min.Price','Max.Price','MPG.city','MPG.highway','EngineSize','Length','Weight')])
+
+# use colMeans functions on mycars and turn to vector
+Cars.Means <- as.vector(colMeans(mycars))
+Cars.Means
+```
+
+b) A vector of standard errors of the means, named \textit{Cars.Std.Errors}
+
+```{r, echo=FALSE}
+
+# use std.error function on mycars data and turn to vector
+Cars.Std.Errors <- as.vector(std.error(mycars))
+
+# compose list of Cars.StdErrors and Cars.Means
+cars.stats <- list(Cars.Means = Cars.Means, Cars.Std.Errors = Cars.Std.Errors)
+cars.stats
+```
+
+Results: My first approach was to loop through the matrix and assign the results to a vector, but I ended up searching for a simplified method. The colMeans function was a simple method for part A after selecting just the specified columns. For part B, instead of writing out a complex formula, I found the plotrix library that has a standard error function. Finally, a list was composed of the outputs from part A and part B and stroed in cars.stats.
+
+    
+Task 12. Use the \texttt{apply()} function on the three-dimensional array \textbf{iris3} to compute:
+
+a) Sample means of the variables \textit{Sepal Length, Sepal Width, Petal Length, Petal Width}, for each of the three species \textit{Setosa, Versicolor, Virginica}
+
+```{r}
+# load dataset
+data("iris3")
+
+# use apply function with mean function on specified columns of iris dataset
+meanSpecies <- as.data.frame(apply(iris3, c(3,2), mean))
+meanSpecies
+```
+
+b) Sample means of the variables \textit{Sepal Length, Sepal Width, Petal Width} for the entire data set.
+
+```{r}
+# repeat previous step but adjust second argument of apply function to get means of each variable
+meanAll <- as.data.frame(apply(iris3, c(2), mean))
+colnames(meanAll) <- c('Mean')
+meanAll
+```
+Results: Having worked with the iris data set in the past, I feel comfortable with the output received. It took a little time playing with the apply function to get the right output. This is fairly similar to the task in question one but I did a little formatting to make the output look a little neater.
+
+The sample means of the variables of the species is very informative. There is much more variance in the petal length and width than there is in the sepal lengths and widths. 
+
+Task 13. Use the data matrix \textbf{state.x77} and the \texttt{tapply()} function to obtain:
+
+
+
+a) The mean per capita income of the states in each of the four regions defined by the factor \textit{state.region}
+
+```{r, echo=FALSE}
+#head(state.x77)
+
+# apply mean to income column of stete.x77 dataset for each region
+meanIncomeByRegion <- tapply(state.x77[,'Income'], state.region, mean)
+meanIncomeByRegion
+```
+
+b) The maximum illiteracy rates for states in each of the nine divisions defined by the factor \textit{state.division}
+
+```{r, echo=FALSE}
+# repeat previous steb but adjust first argument to the illiteracy column, second argument to division, and third argument to max function
+maxIlliteracy <- tapply(state.x77[,'Illiteracy'], state.division, max)
+maxIlliteracy
+```
+
+c) The number of states in each region
+
+```{r, echo=FALSE}
+# use same function as previous two steps but change first argument to population column, second argument to region data, and last argument to length function
+stateCountByRegion <- tapply(state.x77[,'Population'], state.region, length)
+stateCountByRegion
+```
+Results: Each step only required modifying the column for first argument, dataset in the second, and function in the third. The dataset needed and functions are pretty self-explanatory from what is requested in each step.
+I was a little surprised with the Income per region. I didn't expect North Central to be so close to West. Not surprised that the West has the highest but was expecting Northeast to be ahead of the of North Central.
+
+
+Task 14. Using the dataframe \textbf{mtcars}, produce a scatter plot matrix of the variables \textit{mpg, disp, hp, drat, qsec}. Use different colors to identify cars belonging to each of the categories defined by the \textit{carsize} variable in different colors.
+
+Results: I was a little surprised on how challenging it was to get a good looking legend on the base R plot. This required some research to get rid of the 'top half' of the plot to fit the legend and then cut out the border for better look. More modifications were needed after knitting to PDF seeing that part of the legend was getting cut off that wasn't in R Studio. 
+
+Was again surprised on the challenge of finding a scatterplot from ggplot. I didn't add a legend to the second plot since I think it is much easier to read and I believe people can easily put the pieces together when they look at the top half with the correlations labeled by color for each carsize.
+
+Overall this is a very informative scatterplot. There is clear correlation between several variables. There are several strong negative correlations that don't come as much of a surprise. Horsepower(hp) and MPG are the first correlation that come to mind and show a result of -.776. 1/4 mile time (qsec) and Horsepower are also highly correlated as one would expect. If someone is not familiar with cars, I believe a nice takeaway is the Displacement (disp) and Horsepower correlation.
+
+```{r, eval=FALSE, echo = FALSE, warning=FALSE}
+carsize = cut(mtcars[,"wt"], breaks=c(0, 2.5, 3.5, 5.5), 
++ labels = c("Compact","Midsize","Large"))
+```
+    
+```{r, echo=FALSE}
+# load dataset
+data(mtcars)
+#summary(mtcars)
+
+# rewrite given equations
+carsize <- cut(mtcars[,'wt'], breaks=c(0,2.5,3.5,5.5), labels=c('Compact', 'Midsize','Large'))
+
+# use pairs function to plot scatterplot of all requested variables
+# modify plot for aesthetic reasons to make readable and fit a legend
+pairs(~mpg+disp+hp+drat+qsec, data=mtcars, main='MT Cars by Size', col=carsize, upper.panel=NULL)
+legend(.7,.9 ,as.vector(unique(carsize)), fill = c('red','black','green'), bty='n')
+
+# replicate previous plot with ggpairs with color defining carsize
+ggpairs(mtcars, aes(color=carsize), columns= c('mpg','disp','hp','drat','qsec'), title='MT Cars by Size')
+```
+    
+Task 15. Use the function \texttt{aov()} to perform a one-way analysis of variance on the \textbf{chickwts} data with \textit{feed} as the treatment factor. Assign the result to an object named \textit{chick.aov} and use it to print an ANOVA table.
+
+Results: This summary function on the aov variable allows us to see that there is a very low p-value resulting in a significant difference.
+
+```{r, echo=FALSE}
+# load dataset
+data("chickwts")
+
+# apply aov() function to weight and feed
+chick.aov <- aov(weight ~ feed, data=chickwts)
+
+# use summary function on chick.aov variable
+summary(chick.aov)
+```
+
+Task 16. Write an R function named \texttt{ttest()} for conducting a one-sample t-test. Return a list object containing the two components: 
+
+    - the t-statistic named T;
+    
+    - the two-sided p-value named P.
+Use this function to test the hypothesis that the mean of the \textit{weight} variable (in the \textbf{chickwts} dataset) is equal to 240 against the two-sided alternative. \textit{For this problem, please show the code of function you created as well as show the output. }
+
+Results: This question was another that resulted in playing with parentheses in the T variable inside the function. Probably could have simplified it with splitting up the equation with a few more lines of code in the function like I did for xbar, but it was helpful to play around with it. I then put xbar in T subtracting mean, divided by the standard deviation of x divided by the square root of the length of x (represents 'n'). T was then put into the pt function with degrees of freedom as length of x - 1 and lower.tail set to False.
+
+The parentheses were also an obstacle in calculating P because of the multiplying by 2 for a two-tailed test. Was overthinking it after working with the T equation and was putting the 2 in incorrect spots and eventually tried on the outside of the parentheses and matched the output of the t.test function.
+
+The p-value comes out to .02444 with 5% significance level supporting a rejection of null hypothesis. The output shows the alternative hypothesis, 'true mean is not equal to 240'.
+```{r, echo=TRUE}
+#define fuction accepting two arguments, x and mean
+ttest <- function(x, mu){
+    #calculate mean of x
+    xbar <- mean(x)
+    #input xbar into equation calculating T
+    T <- (xbar - mu)/(sd(x)/(sqrt(length(x))))
+    #Use pt function with T as first argument, length -1 of x as second argument, and multiply by 2 for two-tailed test
+    P <- (pt(T, df=(length(x)-1), lower.tail = FALSE)) * 2
+    #return vector of T and P
+    return(c(T, P))
+}
+
+print(ttest(chickwts$weight, 240))
+
+print(t.test(x=chickwts$weight, mu=240, conf.level=.95))
+```
+    
+
+
+    
