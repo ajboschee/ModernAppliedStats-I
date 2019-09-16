@@ -1,0 +1,585 @@
+---
+title: "Homework 3"
+author: "Andrew Boschee"
+date: "9/13/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+```{r, echo=FALSE}
+#load libraries
+library(HSAUR3)
+library(ggplot2)
+library(gridExtra)
+#install.packages('ggmosaic')
+library(ggmosaic)
+#install.packages('vcd')
+library(vcd)
+library(ISLR)
+library(boot)
+#install.packages('caret')
+library(caret)
+```
+
+*No collaborators. Outside Resources: stats.stackexchange.com(Q3 part d cost function), cran.r-project.org, milanor.net, Machine Learning with R (Third Edition), Introduction to Statistical Learning*
+
+\textbf{Task 1.} Use the \textbf{bladdercancer} data from the \textbf{HSAUR3} library to answer the following questions
+
+a) Construct graphical and numerical summaries that will show the relationship between tumor size and the number of recurrent tumors. Discuss your discovery. (Hint: mosaic plot may be a great way to assess this)
+
+\textbf{Results:} The first output shows the number of recurrent tumors in relation to tumor size. From this table and the mosaic plots, we can see that tumors less than or equal to 3cm have a higher frequency of recurring once. One would probably expect that larger tumors are more likely to come back in comparison to smaller tumors. As the number of recurrences goes up, the proportion is more level. This seems like a fairly small dataset so I think this could use a little more exploration.
+
+The other takeaway from the plots is that there is a large drop in the number of recurrences going from one to two when it comes to tumors less than 3cm. Again, the number of samples given makes it hard to make a solid conclusion.
+
+The summary output of the poisson model in part b does not see a signficant impact of the tumor. The difference in my assumption compared to the model shows the usefulness of statistical modeling compared to personal judgement.
+    
+```{r, echo=FALSE}
+#load dataset
+data(bladdercancer)
+
+# first five rows of data
+#head(bladdercancer)
+
+# summary of dataset
+#summary(bladdercancer)
+```
+
+```{r, echo=FALSE, tidy=TRUE}
+# base R tumor size vs number of recurrent tumors
+xtabs(~number + tumorsize, data=bladdercancer)
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+
+# grouped barplot of tumor rucrrence count overall and by tumor size
+layout(matrix(c(1:2), ncol=2))
+barplot(xtabs(~ number, data=bladdercancer), ylab = 'Count', xlab='# of Recurrent Tumors', main='Count by Number of\n Recurrent Tumors')
+plot(tumorsize ~ number, data=bladdercancer, ylab='Tumor Size', xlab='# of Recurrent Tumors', main='Number of Recurrent Tumors\n by Tumor Size')
+
+```
+
+
+```{r, echo=FALSE}
+
+# replicated previous plots in ggplot
+grid.arrange(
+    ggplot(data=bladdercancer, aes(x=number, fill='number')) +
+        geom_bar() +
+        labs(x='# of Recurrent Tumors', y='Count', title = 'Count by Number of \nRecurrent Tumors')+
+        scale_fill_manual(values='red')+
+        theme(legend.position='none'),
+    
+    ggplot(data=bladdercancer) +
+        geom_mosaic(aes(weight= number, x=product(number), fill=tumorsize)) +
+        labs(x = '# of Recurrent Tumors', y='Tumor Size', title = 'Recurrent Tumor\n Frequency by Size')+
+        scale_fill_manual(values=c('red','blue')), 
+ncol=2)
+```
+b) Build a Poisson regression that estimates the effect of size of tumor on the number of recurrent tumors.  Discuss your results.
+
+```{r, echo=FALSE}
+# build poisson regression plot
+poissonReg <- glm(number ~ tumorsize, data=bladdercancer, family=poisson())
+
+#print summary of plot
+summary(poissonReg)
+```
+    
+\textbf{Task 2.} The following data is the number of new AIDS cases in Belgium between the years 1981-1993. Let $t$ denote time
+\begin{verbatim}
+y = c(12, 14, 33, 50, 67, 74, 123, 141, 165, 204, 253, 246, 240)
+t = 1:13
+\end{verbatim}
+Do the following 
+
+a) Plot the relationship between AIDS cases against time. Comment on the plot
+
+\textbf{Results:}We can see from both plots that there is a fairly consistent increase in the number of cases from 1981 to 1993. The sharp increase from 1986 to 1987 and the changes in the early 90's are what are the most noticeable parts of the plot. Would be interesting to see if there is a continuing decrease after 1993.
+
+```{r, echo=FALSE}
+# store requested data as vector
+y <- c(12, 14, 33, 50, 67, 74, 123, 141, 165, 204, 253, 246, 240)
+#t <- 1:13
+# declare t by year
+t <- 1981:1993
+
+# create data frame of variables
+aidsDf <- data.frame(t, y)
+
+# rename columns
+colnames(aidsDf) <- c('year','cases')
+#head(aidsDf)
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+# base R plot of AIDS over time with linear regression line added
+plot(cases ~ year, data = aidsDf, main='Belgium AIDS Cases by Year', xlab = 'Year', ylab = 'Number of AIDS Cases')
+abline(lm(aidsDf$cases ~ aidsDf$year))
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+# replicate of previous plot
+ggplot(data=aidsDf, aes(x=year, y=cases)) +
+    geom_point()+
+    geom_smooth(method='lm', se=FALSE, color='black')+
+    labs(x='Year',y='Number of AIDS Cases', title = 'Belgium AIDS Cases by Year')+
+    scale_x_continuous(breaks = seq(1982,1992,2))
+```
+   
+b) Fit a Poisson regression model $log(\mu_i)=\beta_0+\beta_1t_i$. Comment on the model parameters and residuals (deviance) vs Fitted plot.
+
+\textbf{Discussed in part c...}
+    
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+# build poisson regression model
+aidsPoissonReg <- glm(cases ~ year, data=aidsDf, family = poisson())
+poissResid <- resid(aidsPoissonReg)
+poissFitted <- fitted(aidsPoissonReg)
+# provide summary of model
+#summary(aidsPoissonReg)
+
+plot(aidsPoissonReg, which=1)
+
+ggplot(aidsPoissonReg, aes(x=poissFitted, y=poissResid))+
+    geom_point()+
+    geom_hline(yintercept = 0)+
+    geom_smooth(se=FALSE, color = 'red') +
+    labs(title = 'Residuals vs Fitted', x='Predicted Values', y='Residuals')+
+    scale_x_continuous(breaks = seq(3,6.5,.5))
+```
+    
+c) Now add a quadratic term  in time (\textit{ i.e., $log(\mu_i)=\beta_0+\beta_1t_i +\beta_2t_i^2$} ) and fit the model. Comment on the model parameters and assess the residual plots.
+
+\textbf{Results Continued:} There is now a quadratic term added as 'I(year^2)' adding an exponential term of the year variable. There are plots comparing the quadratic and non-quadratic residuals. Can see that the quadratic plot is scaled much less than the non-quadratic plot on the negative part of the y-axis. This shows that there are some points with higher residual values in the non-quadratic model in comparison to the quadratic model.
+    
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+# build quadratic model
+aidsPoissonQuad <- glm(cases ~ year + I(year^2), data=aidsDf, family=poisson())
+
+# provide summary of model
+#summary(aidsPoissonQuad)
+```
+```{r, echo=FALSE}
+# retrieve residuals of both models
+quadResid <- resid(aidsPoissonQuad)
+
+# base R plot of residuals with horizontal line at 0
+layout(matrix(c(1,2), ncol = 2))
+plot(quadResid ~ aidsDf$year, xlab = 'Year', ylab = 'Residuals', main = 'Quadratic Residuals')
+abline(0,0)
+
+plot(poissResid ~ aidsDf$year, xlab = 'Year', ylab = 'Residuals', main = 'Non-Quadratic Residuals')
+abline(0,0)
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+# add residuals to dataframe
+aidsDf <- cbind.data.frame(aidsDf, quadResid, poissResid)
+
+# replicate previous plots in ggplot
+grid.arrange(
+ggplot(data= aidsDf, aes(x=year, y=quadResid)) +
+    geom_point() +
+    labs(title='Quadratic Residuals', x='Year',y='Residuals')+
+    geom_hline(yintercept = 0),
+
+ggplot(data= aidsDf, aes(x=year, y=poissResid)) +
+    geom_point() +
+    labs(title='Non-Quadratic Residuals', x='Year', y='Residuals')+
+    geom_hline(yintercept = 0),
+ncol=2)
+
+```
+    
+d) Compare the two models using AIC. Which model is better? 
+
+\textbf{Results Continued:} The quadratic model is better due to the lower AIC value at 96.92 in comparison to a non-quadratic AIC value of 166.37. 
+    
+```{r, echo=FALSE}
+sprintf('Non-Quadratic AIC: %g', aidsPoissonReg$aic)
+sprintf('Quadratic AIC: %g', aidsPoissonQuad$aic)
+```
+    
+e) Use \textit{ anova()}-function to perform $\chi^2$ test for model selection. Did adding the quadratic term improve model?
+
+\textbf{Results Continued:} Adding the quadratic model resulted in an imporvement lowering the residuals of the model. The ANOVA table shows a signficant improvement when adding the quadratic term.
+
+```{r, echo=FALSE}
+# store anova in variable
+aidsAnova <- anova(aidsPoissonReg, aidsPoissonQuad, test='Chisq')
+
+# output anova table and summary
+#summary(aidsAnova)
+print(aidsAnova)
+```
+
+\textbf{Task 3.} Load the \textbf{ Default} dataset from \textbf{ISLR} library. The dataset contains information on ten thousand customers. The aim here is to predict which customers will default on their credit card debt. It is a 4 dimensional dataset with 10000 observations. You had developed a logistic regression model on HW \#2. Now consider the following two models 
+\begin{itemize}
+\item Model1 $\rightarrow$ Default = Student + balance 
+\item Model2 $\rightarrow$ Default = Balance 
+\end{itemize}
+For the two competing models do the following
+
+Report validation misclassification (error) rate for both models in each of the three assessment methods. Discuss your results. 
+
+a) With the whole data compare the two models (Use AIC and/or error rate)
+
+\textbf{Results:} Each method required calculating the probability of default, and if it is greater than .50, another added variable 'modelPred' is classified as 'yes' or 'no' to compare against the actual outcome, 'default'. The error rate formula is then composed of sums of values from table composed of the actual defaults and predicted outcomes by model for each method. 
+
+For part a, error rates for the models are very close, but Model 1 has a slight advantage in comparison to model 2. For this method, I added MSE in to see if the better classifications had lower MSE and we can see that the error rate and MSE are both lower for model 1 where we are using two predictor variables instead of just one in model 2.
+    
+```{r, echo=FALSE}
+# load dataset
+data(Default)
+
+
+# Build model with both variables
+model1 <- glm(default ~ student + balance, data = Default, family=binomial)
+#summary(model1)
+
+# make prediction based on pobability and turn into factor
+model1Prob <- predict(model1, type='response')
+model1Pred <- as.factor(ifelse(model1Prob > .50, 'Yes', 'No'))
+
+# add probability and prediction to dataframe
+model1Df <- data.frame(cbind(Default, model1Prob))
+model1Df <- cbind(model1Df, model1Pred)
+
+# build confustion matrix comparing observations and predictions
+model1ConfusionMatrix <- table(model1Df$default, model1Df$model1Pred)
+names(dimnames(model1ConfusionMatrix)) <- c('observed','predicted')
+
+
+# add up misclassifications
+misclassified1 <- sum(model1ConfusionMatrix[1,2], model1ConfusionMatrix[2,1])
+
+# sum up total rows
+totalRow1 <- sum(model1ConfusionMatrix[1,2], model1ConfusionMatrix[2,1], model1ConfusionMatrix[1,1], model1ConfusionMatrix[2,2])
+
+# calculate error rate
+errorRate1 <- misclassified1 / totalRow1
+
+```
+
+```{r, echo=FALSE}
+
+# update fefault column
+Default$default <- ifelse(Default$default == "Yes", 1, 0)
+
+# build model of only balance as predictor variable
+model2 <- glm(default ~ balance, data = Default, family=binomial)
+
+# calculate MSE
+Model1MSE <- mean((predict(model1, Default, type = 'response')-Default$default)^2)
+Model2MSE <- mean((predict(model2, Default, type = 'response')-Default$default)^2)
+
+# calculate probability of default and declare as yes/no 
+model2Prob <- predict(model2, type='response') 
+model2Pred <- as.factor(ifelse(model2Prob > .50, 'Yes', 'No'))
+
+# add probability and predictions to dataframe
+model2Df <- data.frame(cbind(Default, model2Prob))
+model2Df <- cbind(model2Df, model2Pred)
+
+# build confusion matrix of observations and predictions
+model2ConfusionMatrix <- table(model2Df$default, model2Df$model2Pred)
+names(dimnames(model2ConfusionMatrix)) <- c('observed','predicted')
+
+# change default to binary outcome
+model2Df$default <- ifelse(model2Df$default == 'Yes', 1, 0)
+misclassified2 <- sum(model2ConfusionMatrix[1,2], model2ConfusionMatrix[2,1])
+
+# sum up total rows
+totalRow2 <- sum(model2ConfusionMatrix[1,2], model2ConfusionMatrix[2,1], model2ConfusionMatrix[1,1], model2ConfusionMatrix[2,2])
+
+# calculate error rate
+errorRate2 <- misclassified2 / totalRow2
+
+sprintf('Model 1 error rate: %g', errorRate1)
+sprintf('Model 2 error rate: %g', errorRate2)
+
+# output MSE
+sprintf('Model 1 validation MSE: %g', Model1MSE)
+sprintf('Model 2 validation MSE: %g', Model2MSE)
+```
+
+b) Use validation set approach and choose the best model. Be aware  that we have few people who defaulted in the data. 
+
+\textbf{Results Continued:} In comparison to part a, when looking at the error rate and mean squared error (MSE) results, Model 1 has a lower error rate, but a higher MSE. This shows that model 1 has better classifications, but the incorrectly classified are giving higher residual values impacting the MSE. 
+    
+```{r, echo=FALSE}
+
+
+# set random seed
+set.seed(1)
+
+# split training and test set 75/25
+train <- sample(nrow(Default) * .75, nrow(Default) * .25)
+test <- Default[-train,]
+
+# build both models
+valModel1 <- glm(default ~ student + balance, data = Default, subset=train, family=binomial())
+valModel2 <- glm(default ~ balance, data = Default, subset=train, family = binomial())
+
+# calculate MSE
+valModel1MSE <- mean((predict(valModel1, test, type = 'response')-test$default)^2)
+valModel2MSE <- mean((predict(valModel2, test, type = 'response')-test$default)^2)
+
+# make prediction based on pobability and turn into factor
+valModel1Prob <- predict(valModel1, type='response')
+valModel1Pred <- as.factor(ifelse(valModel1Prob > .50, 'Yes', 'No'))
+
+# add probability and prediction to dataframe
+valModel1Df <- data.frame(cbind(Default, valModel1Prob))
+valModel1Df <- cbind(valModel1Df, valModel1Pred)
+
+# build confustion matrix comparing observations and predictions
+valModel1ConfusionMatrix <- table(valModel1Df$default, valModel1Df$valModel1Pred)
+names(dimnames(valModel1ConfusionMatrix)) <- c('observed','predicted')
+
+
+# make prediction based on pobability and turn into factor
+valModel2Prob <- predict(valModel2, type='response')
+valModel2Pred <- as.factor(ifelse(valModel2Prob > .50, 'Yes', 'No'))
+
+# add probability and prediction to dataframe
+valModel2Df <- data.frame(cbind(Default, valModel2Prob))
+valModel2Df <- cbind(valModel2Df, valModel2Pred)
+
+# build confustion matrix comparing observations and predictions
+valModel2ConfusionMatrix <- table(valModel1Df$default, valModel2Df$valModel2Pred)
+names(dimnames(valModel2ConfusionMatrix)) <- c('observed','predicted')
+
+
+# add up misclassifications
+valModel1misclassified <- sum(valModel1ConfusionMatrix[1,2],valModel1ConfusionMatrix[2,1])
+valModel2misclassified <-sum(valModel2ConfusionMatrix[1,2],valModel2ConfusionMatrix[2,1])
+# sum up total rows
+valModeltotalRow <- sum(valModel1ConfusionMatrix[1,2], valModel1ConfusionMatrix[2,1], valModel1ConfusionMatrix[1,1], valModel1ConfusionMatrix[2,2])
+
+# calculate error rate
+valModel1errorRate <- valModel1misclassified / valModeltotalRow
+valModel2errorRate <- valModel2misclassified / valModeltotalRow
+
+sprintf('Model 1 validation error rate: %g', valModel1errorRate)
+sprintf('Model 2 validation error rate: %g', valModel2errorRate)
+
+# output MSE
+sprintf('Model 1 validation MSE: %g', valModel1MSE)
+sprintf('Model 2 validation MSE: %g', valModel2MSE)
+```
+    
+c) Use LOOCV approach and choose the best model
+
+\textbf{Results Continued:} The LOOCV model had a larger difference in error rate in comparison to the two previous methods. For this part, I only used 100 iterations in the for loop for the sake of time and possible computer processing limitations. The results are better in both models when comparing to part b and model 1 is very similar to the results in part a. There is a fairly large increase in error rate in model 2 when comparing the results to part a when using LOOCV. It would be interesting to see the results if the loop went through all rows of the dataset.
+    
+```{r, echo=FALSE}
+matrixcv1 <- matrix(NA, nrow=100, ncol=1)
+matrixcv2 <- matrix(NA, nrow=100, ncol=1)
+
+for(i in 1:100){
+    trainCV <- Default[-i,]
+    testCV <- Default[i, ]
+    model1CV <- glm(default ~ student + balance, data = trainCV, family = 'binomial')
+    model2CV <- glm(default ~ student, data = trainCV, family = 'binomial')
+    loocv1Prob <- predict(model1CV, type='response')
+    loocv1Pred <- as.factor(ifelse(loocv1Prob > .50, 'Yes', 'No'))
+    loocv2Prob <- predict(model2CV, type='response')
+    loocv2Pred <- as.factor(ifelse(loocv2Prob > .50, 'Yes', 'No'))
+    cv1MSE <- mean((predict(model1CV, testCV, type='response')-testCV$default)^2)
+    cv2MSE <- mean((predict(model2CV, testCV, type='response')-testCV$default)^2)
+    matrixcv1[i, ] = cv1MSE
+    matrixcv2[i, ] = cv2MSE
+}
+
+# remove one row of dataframe to allow cbind in next step
+loocvDefault <- Default[-c(1),]
+
+# add probability and prediction to dataframe
+loocv1Df <- data.frame(cbind(loocvDefault, loocv1Prob))
+loocv1Df <- cbind(loocv1Df, loocv1Pred)
+
+# add probability and prediction to dataframe
+loocv2Df <- data.frame(cbind(loocvDefault, loocv2Prob))
+loocv2Df <- cbind(loocv2Df, loocv2Pred)
+
+# build confustion matrix comparing observations and predictions
+loocv1ConfusionMatrix <- table(loocv1Df$default, loocv1Df$loocv1Pred)
+names(dimnames(loocv1ConfusionMatrix)) <- c('observed','predicted')
+
+loocv2ConfusionMatrix <- table(loocv2Df$default, loocv2Df$loocv2Pred)
+names(dimnames(loocv2ConfusionMatrix)) <- c('observed','predicted')
+
+# add blank column to confusion matrix where there were no default predictions so miclassification can be computed
+fillmatrix <- c(0,0)
+fillmatrix <- matrix(fillmatrix, ncol=1)
+loocv2ConfusionMatrix <- cbind(loocv2ConfusionMatrix, fillmatrix)
+
+# add up misclassifications
+loocv1misclassified <- sum(loocv1ConfusionMatrix[1,2],loocv1ConfusionMatrix[2,1])
+loocv2misclassified <-sum(loocv2ConfusionMatrix[1,2],loocv2ConfusionMatrix[2,1])
+# sum up total rows
+loocvtotalRow <- sum(loocv1ConfusionMatrix[1,2], loocv1ConfusionMatrix[2,1], loocv1ConfusionMatrix[1,1], loocv1ConfusionMatrix[2,2])
+
+# calculate error rate
+loocv1errorRate <- loocv1misclassified / loocvtotalRow
+loocv2errorRate <- loocv2misclassified / loocvtotalRow
+
+sprintf('Model 1 validation error rate: %g', loocv1errorRate)
+sprintf('Model 2 validation error rate: %g', loocv2errorRate)
+
+#sprintf('Model 1 MSE : %g', mean(matrixcv1))
+#sprintf('Model 2 MSE : %g', mean(matrixcv2))
+
+```
+
+    
+d) Use 10-fold cross-validation approach and choose the best model
+```{r, echo=FALSE}
+# use createFolds function to add folds variable to dataframe splitting it into 10 folds
+folds <- createFolds(Default$default, k=10)
+
+# seperate training and test set
+cvTest <- Default[folds$Fold01, ]
+cvTrain <- Default[-folds$Fold01, ]
+
+# build model and calculate MSE
+cvResults1 <- lapply(folds, function(x){
+    defaultTrain <- Default[-x, ]
+    defaultTest <- Default[x, ]
+    defaultModel <- glm(default ~ student + balance, data = defaultTrain, family = binomial)
+    defaultPredict <- predict(defaultModel, defaultTest, type='response')
+    defaultActual <- Default$default
+    cvMSE <- mean((defaultPredict - defaultActual)^2)
+    return(cvMSE)
+})
+
+# build second model and MSE calculation
+cvResults2 <- lapply(folds, function(x){
+    defaultTrain <- Default[-x, ]
+    defaultTest <- Default[x, ]
+    defaultModel <- glm(default ~ student, data = defaultTrain, family = binomial)
+    defaultPredict <- predict(defaultModel, defaultTest, type='response')
+    defaultActual <- Default$default
+    cvMSE <- mean((defaultPredict - defaultActual)^2)
+    return(cvMSE)
+})
+#kFoldMSE1 <- mean(unlist(cvResults1))
+#kFoldMSE2 <- mean(unlist(cvResults2))
+
+#output overall average avross all folds
+#sprintf('Model 1 10-fold cross-validation MSE: %g ', kFoldMSE1)
+#sprintf('Model 2 10-fold cross-validation MSE: %g ', kFoldMSE2)
+
+```
+
+
+```{r, echo=FALSE}
+# define cost function for argument in cv.glm function
+cost <- function(r, pi=0){
+    mean(abs(r-pi)>0.5)
+}
+
+# use cv.glm function ton test set with model1CV from part c 
+model1kfold <- cv.glm(test, model1CV, K=10, cost)
+model2kfold <- cv.glm(test, model2CV, K=10, cost)
+
+#output results
+sprintf('Model 1 Error Rate: %g ', model1kfold$delta[1])
+sprintf('Model 2 Error Rate: %g ', model2kfold$delta[1])
+```
+   
+\textbf{Results Continued:} For k-fold method, I re-used the model from part c in the cv.glm() function with the cost function and k=10 on the test set. This model stands out the most as it shows model 2 actually having a much better error rate in comparison to model 1. This did not occur in any of the previous models. The k-fold method performed the worst of all models which came as a bit of a surprise. 
+
+When comparing all models, part a gave the best performance overall.
+
+
+4. In the \textbf{ISLR} library load the \textbf{Smarket} dataset. This contains Daily percentage returns for the S\&P 500 stock index between 2001 and 2005. There are 1250 observations and 9 variables. The variable of interest is Direction which is a factor with levels Down and Up indicating whether the market had a positive or negative return on a given day. Since the goal is to predict the direction of the stock market in the future, here it would make sense to use the data from years 2001 - 2004 as training and 2005 as validation. According to this, create a training set and testing set. Perform logistic regression and assess the error rate.  
+
+\textbf{Results:} To begin, the 'up' and 'down' values are turned to binary values '1' and '0'. Then subset function is used to split the training and test set depending on if the year is 2005 or not.
+
+Used similar methods as previous exercises using binomial family on the glm function with direction as the dependent variable. I was curious at how much the 'volume' variable impacted the outcome of 'direction' and was and thought that it might have a little bit more of an impact. The error rate was not affected and the MSE value actually improved when 'Volume' was removed.
+
+Confusion matrix is shown comparing the two models to show that there was no impact on classifications. This explains how the error rates are the same even though the MSE values differ.
+
+```{r, echo=FALSE}
+# load dataset
+data(Smarket)
+#head(Smarket)
+#summary(Smarket)
+```
+```{r, echo=FALSE}
+
+Smarket$Direction <-ifelse(Smarket$Direction == 'Up', 1, 0)
+marketTrain <- subset(Smarket, Smarket$Year == 2005)
+marketTest <- subset(Smarket, Smarket$Year != 2005)
+
+#head(marketTest)
+#head(marketTrain)
+```
+
+
+```{r, echo=FALSE}
+# build model with all predictor variables
+valModelMarket <- glm(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume + Today, data = marketTrain, family=binomial())
+#summary(valModelMarket)
+
+# second model without 'Today' variable
+valModelMarket2 <- glm(Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Today, data=marketTrain, family=binomial())
+#summary(valModelMarket2)
+```
+
+```{r, echo=FALSE}
+# Calculate MSE for each model
+marketModel1MSE <- mean((predict(valModelMarket, marketTest, type='response')-marketTest$Direction)^2)
+marketModel2MSE <- mean((predict(valModelMarket2, marketTest, type='response')-marketTest$Direction)^2)
+
+# turn dependent variable to factor
+marketTest$Direction <- as.factor(marketTest$Direction)
+
+# make prediction and make binary variable
+marketModel1Prob <- predict(valModelMarket, marketTest, type = 'response')
+marketModel1Pred <- as.factor(ifelse(marketModel1Prob > .50, 1, 0))
+
+marketModel2Prob <- predict(valModelMarket2, marketTest, type='response')
+marketModel2Pred <- as.factor(ifelse(marketModel2Prob > .50, 1, 0))
+
+# add variables to dataframe
+marketTest <- cbind.data.frame(marketTest, marketModel1Pred, marketModel2Pred)
+
+# create confusion matrix
+confusionMatrixModel1 <- table(marketTest$Direction, marketTest$marketModel1Pred)
+confusionMatrixModel2 <- table(marketTest$Direction, marketTest$marketModel2Pred)
+
+# add up misclassifications
+valModel1misclassified <- sum(confusionMatrixModel1[1,2],confusionMatrixModel1[2,1])
+valModel2misclassified <-sum(confusionMatrixModel2[1,2],confusionMatrixModel2[2,1])
+# sum up total rows
+valModeltotalRow <- sum(confusionMatrixModel1[1,2], confusionMatrixModel1[2,1], confusionMatrixModel1[1,1], confusionMatrixModel1[2,2])
+
+# calculate error rate
+marketModel1errorRate <- valModel1misclassified / valModeltotalRow
+marketModel2errorRate <- valModel2misclassified / valModeltotalRow
+
+print(confusionMatrixModel1)
+print(confusionMatrixModel2)
+
+# output results
+sprintf('Model 1 validation error rate: %g', marketModel1errorRate)
+sprintf('Model 2 validation error rate: %g', marketModel2errorRate)
+
+sprintf('Model 1 validation MSE: %g', marketModel1MSE)
+sprintf('Model 2 validation MSE: %g', marketModel2MSE)
+
+summary(valModelMarket)
+summary(valModelMarket2)
+```
+
+
+
+
+
+
