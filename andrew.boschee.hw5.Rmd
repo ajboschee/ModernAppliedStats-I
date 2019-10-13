@@ -1,0 +1,488 @@
+---
+title: "Homework 5"
+author: "Andrew Boschee"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+
+```
+*No collaborators, *
+*Outside Resources: R Graphics Cookbook, Rdocumentation.com, cran.r-project.org, https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4842399/* 
+```{r, echo =FALSE}
+# import libraries
+#install.packages('Metrics')
+#install.packages('ggdendro')
+#install.packages('rpart.plot')
+#install.packages('rpart')
+#install.packages('mlbench')
+#install.packages('partykit')
+#install.packages('randomForest')
+#install.packages('leaps')
+#install.packages('GGally')
+
+library(mlbench)
+library(rpart)
+library(rpart.plot)
+library(ggplot2)
+library(ggdendro)
+library(partykit)
+library(knitr)
+library(randomForest)
+library(GGally)
+library(leaps)
+library(Metrics)
+library(TH.data)
+library(boot)
+library(gridExtra)
+library(fastAdaboost)
+```
+
+1. The \textbf{BostonHousing} dataset reported by Harrison and Rubinfeld (1978) is available as data.frame package \textbf{mlbench} (Leisch and Dimitriadou, 2009). The goal here is to predict the median value of owner-occupied homes  (medv variable, in 1000s USD) based on other predictors in the dataset. Use this dataset to do the following 
+
+a.) Construct a regression tree using rpart(). The following need to be included in your discussion. How many nodes did your tree have? Did you prune the tree? Did it decrease the number of nodes? What is the prediction error (calculate MSE)?  Provide a plot of the predicted vs. observed values. Plot the final tree.
+
+The plots of observed vs predicted values are very informative when comparing these models. Random Forest clearly has less residuals, especially on the high end of the values in comparison to non-random forest. That is also reflected in the table of results with both Random Forest models performing much better than non-random forest models.
+    
+```{r, echo =FALSE, fig.width=10, fig.height=5}
+# load dataset
+set.seed(1)
+data("BostonHousing")
+
+# construct the regression tree
+bostHousReg <- rpart(medv ~ ., data=BostonHousing, control=rpart.control(minsplit=15))
+#summary(bostHousReg)
+
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# plot with rpart and ggdendrogram
+set.seed(1)
+rpart.plot(bostHousReg)
+ggdendrogram(bostHousReg)
+plotcp(bostHousReg)
+
+```
+
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+
+#show error rate and cp plots
+grid.arrange(
+ggplot(data= as.data.frame(bostHousReg$cptable), aes(x=nsplit, y=xerror)) +
+  geom_point() +
+  geom_line() +
+  labs(x='Number of Splits', y='Error', title='Error by Splits'),
+
+ggplot(data = as.data.frame(bostHousReg$cptable), aes(x=nsplit, y=CP))+
+  geom_point() +
+  geom_line()+
+  labs(x='Number of Splits', y='CP', title='CP by Splits'), nrow=1)
+```
+
+The optimal number of nodes comes out to be 9 and shows no need to prune the tree. Applied the model again with pruning parameters and the plot shown is identical to the plot earlier.
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# find optimum number of nodes
+optimum <- which.min(bostHousReg$cptable[,'xerror'])
+cp <- bostHousReg$cptable[optimum,'CP']
+
+# prune model with optimum number of nodes
+bostHousPrune <- prune(bostHousReg, cp=cp)
+
+# plot optimum tree
+rpart.plot(bostHousPrune)
+```
+
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# prediction of pruned tree
+pred1 <- predict(bostHousPrune , newdata = BostonHousing)
+
+# calc mse
+pred1MSE <- mean((BostonHousing$medv - pred1)^2)
+
+#add predictions to dataframe
+model1 <- as.data.frame(cbind(BostonHousing$medv, pred1))
+
+# format confusion matrix
+colnames(model1) <- c('observed', 'predicted')
+row.names(model1) <- NULL
+
+# plot predicted vs observed
+ggplot(data=model1, aes(x=observed, y=predicted)) +
+  geom_point() +
+  geom_smooth(method = 'lm')+
+  labs(title='Predicted vs Observed')
+
+# base r plot
+plot(model1$observed, model1$predicted, xlab= 'Observed', ylab='Predicted',
+     main= 'Predicted vs Observed')
+abline(lm(model1$predicted ~ model1$observed))
+
+```
+    
+b) Perform bagging with 50 trees. Report the prediction error (MSE). Provide the predicted vs observed plot. 
+    
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+
+# create list for rpart
+list1 <- vector(mode = 'list', length = 50)
+
+# count rows in dataset
+n <- nrow(BostonHousing)
+
+#perform bagging of model
+samples <- rmultinom(length(list1), n, rep(1,n)/n)
+
+bostHousReg2 <- rpart(medv ~ ., data = BostonHousing, control = rpart.control(xval=0))
+
+for (i in 1:length(list1))
+  list1[[i]] <- update(bostHousReg2, weights = samples[,i])
+
+# make predictions
+pred2 <- predict(bostHousReg2, newdata = BostonHousing)
+
+#calc mse
+pred2MSE <- mean((BostonHousing$medv - pred2)^2)
+
+# output MSE
+kable(pred2MSE, col.names = c('MSE'),caption = 'Bagging MSE')
+
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+
+# build confusion matrix
+model2 <- as.data.frame(cbind(BostonHousing$medv, pred2))
+colnames(model2) <- c('observed', 'predicted')
+row.names(model2) <- NULL
+
+# plot predicted vs observed
+ggplot(data=model2, aes(x=observed, y=predicted)) +
+  geom_point() +
+  geom_smooth(method = 'lm')+
+  labs(title='Bagging - Predicted vs Observed')
+
+# replicate plot in base r
+plot(model2$observed, model2$predicted, xlab= 'Observed', ylab='Predicted',
+     main= 'Bagging - Predicted vs Observed')
+abline(lm(model2$predicted ~ model2$observed))
+
+```
+    
+c) Use randomForest() function in R to perform bagging. Report the prediction error (MSE). Was it the same as (b)? If they are different what do you think caused it?  Provide a plot of the predicted vs. observed values.
+
+The results in this model varied when making modifications to the number of trees ('ntree') and number of random variables selected ('mtry'). Ideally, it would be best to loop through different variations of those two parameters to find ideal model, but I was most interested in the number of random variables and going around 10-15, I found 13 gave the lowest MSE. There is probably a better option if I continued tuning the model.
+
+    
+```{r, echo =FALSE, fig.width=10, fig.height=5}
+
+# perform random forest bagging
+set.seed(1)
+model3 <- randomForest(medv ~ ., data = BostonHousing, ntree = 50, mtry = 13)
+
+# make prediction
+pred3 <- predict(model3, data = BostonHousing)
+
+# calc MSE
+pred3MSE <- mean((BostonHousing$medv - pred3)^2)
+
+
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# construct confusion matrix
+model3 <- as.data.frame(cbind(BostonHousing$medv, pred3))
+colnames(model3) <- c('observed', 'predicted')
+row.names(model3) <- NULL
+
+# plot observed vs predicted
+ggplot(data=model3, aes(x=observed, y=predicted)) +
+  geom_point() +
+  geom_smooth(method = 'lm')+
+  labs(title='Bagging - Predicted vs Observed')
+
+# replicate in base R
+plot(model3$observed, model3$predicted, xlab= 'Observed', ylab='Predicted',
+     main= 'Bagging - Predicted vs Observed')
+abline(lm(model3$predicted ~ model3$observed))
+
+```
+    
+d) Use randomForest() function in R to perform random forest. Report the prediction error (MSE).  Provide a plot of the predicted vs. observed values.
+    
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# build model for random forest without bagging
+model4 <- randomForest(medv ~ ., data = BostonHousing)
+
+# make prediction
+pred4 <- predict(model4, data = BostonHousing)
+
+# calc mse
+pred4MSE <- mean((BostonHousing$medv - pred4)^2)
+
+# build confustion matrix
+model4 <- as.data.frame(cbind(BostonHousing$medv, pred4))
+
+colnames(model4) <- c('observed', 'predicted')
+row.names(model4) <- NULL
+
+# plot observed vs predicted
+ggplot(data=model4, aes(x=observed, y=predicted)) +
+  geom_point() +
+  geom_smooth(method = 'lm')+
+  labs(title='Predicted vs Observed')
+
+# replicate plot in base r
+plot(model4$observed, model4$predicted, xlab= 'Observed', ylab='Predicted',
+     main= 'Predicted vs Observed')
+abline(lm(model4$predicted ~ model4$observed))
+
+```
+
+e) Provide a table containing each method and associated MSE. Which method is more accurate?
+
+Both Random Forest models had similar MSE values but Random Forwest without bagging performed slightly better and was the best of all models.
+    
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+
+# make vectors of method names and error rates
+MSEvec <- c(pred1MSE, pred2MSE, pred3MSE, pred4MSE)
+methods <- c('Regression Tree', 'Bagging','RandomForestBagging','RandomForest')
+
+# combine two vectors to dataframe
+mseComp <- as.data.frame(cbind(methods, MSEvec))
+
+kable(mseComp)
+```
+    
+2. Consider the glacoma data (data = "\textbf{GlaucomaM}", package = "\textbf{TH.data}").
+
+a) Build a logistic regression model. Note that most of the predictor variables are highly correlated. Hence, a logistic regression model using the whole set of variables will not work here as it is sensitive to correlation.
+
+
+The solution is to select variables that seem to be important for predicting the response and using those in the modeling process using GLM. One way to do this is by looking at the relationship between the response variable and predictor variables using graphical or numerical summaries - this tends to be a tedious process. Secondly, we can use a formal variable selection approach. The $step()$ function will do this in R. Using the $step$ function, choose any direction for variable selection and fit logistic regression model. Discuss the model and error rate.
+
+
+In order to select the important models, I found the correlation among the variables and filtered it to only variables with correlation under 75%. This gave me back 12 predictor variables to use. I then combined those predictor variables back into a dataframe with the dependent variable to build the models from. Following that, I used both forward and backward stepwise selection with forward returning six variables and backward at five. 
+
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+
+# load dataset
+data('GlaucomaM', package = 'TH.data')
+
+# make dependent variable binary
+GlaucomaM$Class <- ifelse(GlaucomaM$Class == 'normal', 0, 1)
+
+
+```
+        
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+
+# drop dependent variable
+set.seed(1)
+glaucomaVars <- GlaucomaM[,-c(63)]
+
+# find absolute value of correlations
+glaucomaCorr <- as.data.frame(abs(cor(glaucomaVars)))
+diag(glaucomaCorr) <- 0
+glaucomaCorr[lower.tri(glaucomaCorr)] <- 0
+
+# filter to correlations below .75
+lowCorrelation <- glaucomaVars[,!apply(glaucomaCorr, 2, function(col) any(col > 0.75))]
+
+# merge dataframe back with dependent variable
+GlaucomaM <- as.data.frame(cbind(lowCorrelation, GlaucomaM[,63]))
+colnames(GlaucomaM)[13] <- 'Class'
+
+# plot ggpair to explor correlations
+ggpairs(data = GlaucomaM[,1:6])
+ggpairs(GlaucomaM[,7:12])
+```
+
+
+
+As seen in the tables, forward stepwise model had the best error rate and lowest AIC. Therefore, the remaining models will be using the formula from the forward stepwise method.
+
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+set.seed(1)
+# set up models for forward and backward step models
+glaucomaMod <- glm(Class ~ ., data = GlaucomaM, family = 'binomial')
+glaucomaMod2 <- glm(Class ~ 1, data = GlaucomaM, family='binomial')
+
+# forward stepwise variable selection
+forwardMod <- step(glaucomaMod2, data = GlaucomaM, direction = 'forward',trace = 0, scope = list(upper=glaucomaMod, lower=glaucomaMod2))
+
+# backward stepwise variable selection
+backwardMod <- step(glaucomaMod, data = GlaucomaM, trace = 0, direction = 'backward')
+
+# show formulas
+print('Forward Stepwise Model')
+forwardMod$formula
+
+print('Backward Stepwise Model')
+backwardMod$formula
+
+# compare AIC
+kable(cbind(backwardMod$aic,
+forwardMod$aic), col.names = c('Forward Stepwise','Backward Stepwise'), caption = 'AIC Summary')
+```
+    
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+
+# make binary output of prediction
+glmProbForward <- predict(forwardMod, data = GlaucomaM, type = 'response')
+glmPredForward <- as.factor(ifelse(glmProbForward > .5, 1, 0))
+
+glmProbBackward <- predict(backwardMod, data = GlaucomaM, type = 'response')
+glmPredBackward <- as.factor(ifelse(glmProbBackward > .5, 1, 0))
+```
+
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+
+# find error rate
+forwardError <- ce(GlaucomaM$Class, glmPredForward)
+backwardError <- ce(GlaucomaM$Class, glmPredBackward)
+
+# output error rate
+kable(cbind(backwardError,
+forwardError), col.names = c('Backward Error','Forward Error'), caption = 'Misclassification Summary')
+```
+
+    
+    
+b) Build a logistic regression model with K-fold cross validation (k = 10). Report the error rate.
+
+Using the forward stepwise model from part a, K-fold cross validation is performed and gives a slightly higher misclassification rate than expected at .189.
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+set.seed(1)
+# make cost function for k fold
+cost <- function(r, pi = 0)
+  mean(abs(r-pi) > 0.5)
+
+# perform cross validation with ten folds and pull error rate
+kError <- cv.glm(data = GlaucomaM, forwardMod, K=10, cost)$delta[1]
+
+# output error rate
+kable(kError, caption = 'K-Fold CV Error Rate')
+```
+
+
+c) Find a function (package in R) that can conduct the "adaboost" ensemble modeling. Use it to predict glaucoma and report error rate. Be sure to mention the package you used.
+
+Using the 'fastadaboost' package, the adaboost() function is applied with the forward stepwise formula and 500 iterations. Surprisingly, there are no incorrect classifications when using this method.
+
+
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+set.seed(1)
+# perform adaboost on model with 500 iterations
+GlaucomaBoost <- adaboost(formula(forwardMod), data=GlaucomaM, nIter=500)
+
+# make prediction of model
+boostPred2 <- predict(GlaucomaBoost, newdata=GlaucomaM, type = 'response')
+
+# make binary dependent variable
+boostProb <- boostPred2$prob[,2]
+boostPred2 <- as.factor(ifelse(boostProb > .5, 1, 0))
+
+# find error rate
+boostError <- ce(GlaucomaM$Class, boostPred2)
+
+# output error rate
+kable(boostError, caption = 'AdaBoost Error Rate')
+```
+
+d) Report the error rates based on single tree, bagging and random forest. (A table would be great for this).
+
+
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# set seed
+set.seed(1)
+
+# build model
+glaucomaTree <- rpart(formula(forwardMod), data=GlaucomaM, control = rpart.control(minsplit=10))
+
+# make prediction
+glaucomaTreeProb <- predict(glaucomaTree, data=GlaucomaM)
+glaucomaTreePred <- as.factor(ifelse(glaucomaTreeProb > .5, 1, 0))
+
+# find error for single tree
+glaucomaTreeError <- ce(GlaucomaM$Class, glaucomaTreePred)
+
+# output error
+kable(glaucomaTreeError, caption = 'Single Tree')
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+
+# create list for rpart
+set.seed(1)
+list1 <- vector(mode = 'list', length = 30)
+
+# get rows from dataset
+n <- nrow(GlaucomaM)
+
+
+samples <- rmultinom(length(list1), n, rep(1,n)/n)
+
+# build forward stepwise model
+glaucomaBagging <- rpart(formula(forwardMod), data = GlaucomaM, control = rpart.control(xval=0))
+
+
+for (i in 1:length(list1))
+  list1[[i]] <- update(glaucomaBagging, weights = samples[,i])
+
+
+glaucomaBaggingProb <- predict(glaucomaBagging, data=GlaucomaM)
+glaucomaBaggingPred <- as.factor(ifelse(glaucomaBaggingProb > .5, 1, 0))
+
+baggingError <- ce(GlaucomaM$Class, glaucomaBaggingPred)
+kable(baggingError, caption= 'Bagging Error')
+```
+
+```{r, echo=FALSE}
+# build model for random forest without bagging
+set.seed(621)
+randForest2 <- randomForest(formula(forwardMod), data = GlaucomaM)
+
+# make prediction
+
+randForest2Prob <- predict(randForest2, data=GlaucomaM, type='response')
+randForest2Pred <- as.factor(ifelse(randForest2Prob > .5, 1, 0))
+
+# calc mse
+randForest2Error <- ce(GlaucomaM$Class, randForest2Pred)
+kable(randForest2Error, caption = 'Random Forest Error')
+
+```
+e) Write a conclusion comparing the above results (use a table to report models and corresponding error rates). Which one is the best model?
+
+Among single tree, bagging, and random forest for this question, single tree clearly has a much lower error rate in comparison to other models. The first thing that comes to my mind is overfitting and being too good to be true. In this instance I would probably go back and prune the tree to look into it a bit deeper. 
+
+Looking at just the models from part D, my expectation was for the more complex model to perform better than the simple decision tree. My initial thought was for random forest to be the winner but there may be a possibility that filtering out the highly correlated variables eliminated the need for the random forests benefit of essentially decorrelating the trees.
+
+```{r, echo=FALSE}
+set.seed(1)
+# vectors of models and error
+models <- c('AdaBoost','K-Fold','Backward Stepwise', 'Forward Stepwise', 'Single Tree','Bagging','Random Forest')
+Error <- c(boostError, kError, backwardError, forwardError, glaucomaTreeError, baggingError, randForest2Error)
+
+# make dataframe of vectors
+comp2 <- as.data.frame(cbind(models, Error))
+
+kable(comp2, caption = 'Final Comparison')
+```
+
+f) From the above analysis, which variables seem to be important in predicting Glaucoma?
+
+From the summary, varg and hvc seem to be the most important independent variables with very low p-values. I think there are a couple different ways that I could have gone about choosing the most important variables that may have given far different results. I don't know enough conceptually about this topic specifically to judge whether or not this is a reasonable number of variables or whether they are reasonable to see as the most important.
+
+```{r, echo = FALSE}
+summary(forwardMod)
+```
+
