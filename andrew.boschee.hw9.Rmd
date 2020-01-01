@@ -1,0 +1,379 @@
+---
+title: "Homework 9"
+author: "Andrew Boschee"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+```{r, echo = FALSE}
+library(ggplot2)
+#install.packages('lme4')
+library(lme4)
+library(knitr)
+library(gridExtra)
+library(HSAUR3)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+#install.packages('multcomp')
+library(multcomp)
+#install.packages('Hmisc')
+library(Hmisc)
+```
+
+*No collaborators. Outside Resources: R Graphics Cookbook, R for Data Science, http://www.sthda.com/english/wiki/ggplot2-error-bars-quick-start-guide-r-software-and-data-visualization*
+
+1. Following up with the Beat the Blues data from the video (package HSAUR3) do the following
+
+a. Construct boxplots to compare the factor variable \textbf{drug} in an analogous way to how we constructed boxplots in the video for the treatment variable. Discuss the results. 
+
+We can see from the first set of boxplots that over time, the BDI levels decrease and start to level off. When it comes to no drug treatment there is a slight decrease but much more variablity. While there is not a huge difference as time goes on regarding the median, the IQR and outliers stand out easily.
+      
+```{r, echo = FALSE}
+# load dataset
+data(BtheB)
+
+# subset data for drug treatment
+drugYes <- subset(BtheB, drug == 'Yes')[,grep('bdi', names(BtheB))]
+drugNo <- subset(BtheB, drug == 'No')[,grep('bdi', names(BtheB))]
+
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# base r plots
+layout(matrix(1:2, ncol=2))
+boxplot(drugYes, main = 'Drug Treatment = Yes')
+boxplot(drugNo, main = 'Drug Treatment = No')
+```
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+# remake plot with ggplot
+grid.arrange(
+ggplot(data = melt(drugYes, na.rm =TRUE), aes(x=variable,y=value, fill = variable)) +
+  geom_boxplot(aes(fill=variable))+
+  labs(title='Drug Treatment = Yes', x = 'Time (Months)', y = 'BDI', fill = 'Time'),
+
+ggplot(data = melt(drugNo, na.rm =TRUE), aes(x=variable,y=value, fill = variable)) +
+  geom_boxplot(aes(fill=variable))+
+  labs(title='Drug Treatment = No', x = 'Time (Months)', y = 'BDI', fill = 'Time'),
+nrow =1)
+
+```
+
+
+b. Repeat (a) for the \textbf{length} variable. Discuss the results.
+
+By creating subsets of data based on length, we can compare the BDI over time. This is somewhat similar to part A with length greater than 6 months being no drugs and less than 6 months being treated with drugs. There is much less variability with length under six months and shows more of a decline over time with a little rise at the end. The volatility of the episodes longer than six months is very noticeable in this plot.
+
+```{r, echo = FALSE}
+# subset data based on duration
+lengthHigh <- subset(BtheB, length == '>6m')[,grep('bdi', names(BtheB))]
+lengthLow <- subset(BtheB, length == '<6m')[,grep('bdi', names(BtheB))]
+
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# boxplot of subset
+layout(matrix(1:2, ncol=2))
+boxplot(lengthHigh, main = 'Episode Length Greater Than 6 Months')
+boxplot(lengthLow, main = 'Episode Length Less than 6 Months')
+
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# remake prior plot with ggplot
+grid.arrange(
+ggplot(data = melt(lengthHigh, na.rm =TRUE), aes(x=variable,y=value, fill = variable)) +
+  geom_boxplot(aes(fill=variable))+
+  labs(title = 'Episode Length Greater Than 6 Months', x = 'Time (Months)', y = 'BDI', fill = 'Time'),
+
+ggplot(data = melt(lengthLow, na.rm =TRUE), aes(x=variable,y=value, fill = variable)) +
+  geom_boxplot(aes(fill=variable))+
+  labs(title = 'Episode Length Less Than 6 Months', x = 'Time (Months)', y = 'BDI', fill = 'Time')
+, nrow =1)
+
+```
+
+
+c. Use the \textit{lm} function to fit a model to the Beat the Blues data that assumes that the repeated measurements are independent. Compare the results to those from fitting the random intercept model \textit{BtheB\_lmer1} from the video.
+
+The lm() function was applied and compared to the lmer() function below. The results are a little hard to interpret with the AIC lower and BIC higher for the lm() model in comparison to the lmer() model. With no clear determination, I look at the deviance and see the linear model performs better.
+
+The plot of random intercepts and residuals seen below shows that the lmer() model passes the 'pencil/pen' test discussed in lecture showing reasonable accuracy.
+      
+```{r, echo = FALSE}
+# use factor to get index for reshape
+BtheB$subject <- factor(rownames(BtheB))
+nobs <- nrow(BtheB)
+# reshape function to go from wide to long form
+BtheBLong <- reshape(BtheB, idvar = 'subject',
+                     varying = c('bdi.2m','bdi.3m','bdi.5m','bdi.8m'), direction = 'long')
+
+# create time data
+BtheBLong$time <- rep(c(2,3,5,8), rep(nobs, 4))
+
+#subset(BtheBLong, subject %in% c('1','2','3'))
+       
+```
+
+```{r, echo = FALSE}
+# fit lm
+BtheBLm <- lm(bdi ~ ., data = BtheBLong)
+
+#model from lecture
+BtheBLmer1 <- lmer(bdi ~ bdi.pre + time + treatment + drug +
+                   length + (1|subject), data=BtheBLong, REML = FALSE, na.action = na.omit)
+# anova function to compare models
+anova(BtheBLmer1, BtheBLm)
+```
+
+```{r, echo = FALSE}
+# cftest function
+cftest(BtheBLmer1)
+
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# residuals function to use when comparing models
+residuals <- function(object, observed) observed - predict(object)
+layout(matrix(1:2, ncol = 2))
+qint <- ranef(BtheBLmer1)$subject[['(Intercept)']]
+qres <- residuals(BtheBLmer1, BtheBLong$bdi.pre)
+qqnorm(qint, ylab = 'Estimated Random Intercepts',
+       xlim = c(-3, 3), ylim = c(-20,20),
+       main = 'Random Intercepts')
+qqline(qint, col = 'red', lwd=3)
+qqnorm(qres, xlim=c(-3,3), ylim=c(-20,20),
+       ylab = 'Estimated Residuals',
+       main = 'Residuals')
+qqline(qres, col = 'red', lwd=3)
+
+```
+
+d. Investigate and discuss whether there is any evidence of an interaction between treatment and time for the Beat the Blues data.
+
+To look at interactions, the coefficients of the interaction in the linear model are shown with a p value of .03 giving significance at the .05 level. When we compare to the effects model from cftest () function, the p value is about .09 not giving significance like the linear model.
+      
+```{r, echo = FALSE}
+
+BtheBLm2 <- lm(bdi ~ subject + time + drug + length + treatment + bdi.pre + time*treatment, data = BtheBLong, na.action = na.omit)
+
+BtheBLmer2 <- lmer(bdi ~ bdi.pre + time + treatment + drug + length + (1|subject) + time*treatment, data = BtheBLong,REML=FALSE, na.action = na.omit)
+
+#anova(BtheBLmer2, BtheBLm2)
+kable(as.data.frame(summary(BtheBLm2)$coefficients)[99,], caption = 'LM Model Coefficients')
+
+cftest(BtheBLmer2)
+```
+
+e. Construct a plot of the mean profiles of both treatment groups in the Beat the Blues data, showing also standard deviation bars at each time point.
+
+After creating subsets for treatment types, means and standard deviations for each treatment were stored in variables and were plotted as points in base R with modified pch parameters. GGplot was a little more complex and research pointed to using stat_summary with modified parameters using 'errorbar' geom and 'mean_sdl' for fun.data.
+```{r, echo = FALSE}
+# subset data for each treatment
+treatment1 <- subset(BtheB, treatment == 'TAU')[,grep('bdi', names(BtheB))]
+treatment2 <- subset(BtheB, treatment == 'BtheB')[,grep('bdi',names(BtheB))]
+
+# get means and sds
+tauSd <- as.data.frame(apply(treatment1, na.rm = TRUE, 2, sd))
+btbSd <- as.data.frame(apply(treatment2, na.rm = TRUE, 2, sd))
+tauMean <- as.data.frame(apply(treatment1, na.rm = TRUE, 2,mean))
+btbMean <- as.data.frame(apply(treatment2, na.rm = TRUE, 2, mean))
+
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# base r plots with added points for mean and st dev
+layout(matrix(1:2, ncol = 2))
+boxplot(treatment1, main = 'Treatment as Usual')
+points(tauSd, pch=3, col = 'red')
+points(tauMean, pch = 1, col ='black')
+boxplot(treatment2, main = 'Beat the Blues Treatment')
+points(btbMean, pch = 1, col = 'black')
+points(btbSd, pch = 3, col = 'red')
+```
+```{r, echo = FALSE, fig.width = 10, fig.height = 5}
+# plot treatment over time with added in mean and sd with stat_summary
+grid.arrange(
+ggplot(data = melt(treatment1, na.rm = TRUE), aes(x=variable, y=value, fill=variable))+
+  geom_boxplot(aes(fill=variable))+
+  stat_summary(fun.y=mean, geom = 'point')+
+  stat_summary(fun.data='mean_sdl', fun.args = list(mult=1), geom='errorbar', color = 'red', width = 0.2)+
+  labs(title= 'Treatment as Usual', x = 'Time (Months)', y = 'BDI', fill = 'Time'),
+ 
+ggplot(data = melt(treatment2, na.rm = TRUE), aes(x=variable, y=value, fill=variable))+
+  geom_boxplot(aes(fill=variable))+
+  stat_summary(fun.data='mean_sdl', fun.args = list(mult=1), geom='errorbar', color='red', width=0.2)+
+  stat_summary(fun.y=mean, geom = 'point')+
+  labs(title = 'Beat the Blues Treatment', x = 'Time (Months)', y = 'BDI', fill = 'Time'),
+nrow = 1)
+```
+  
+2. Consider the \textbf{phosphate} data from the package HSAUR3. This data shows the plasma inorganic phosphate levels for 33 subjects, 20 of whom are controls and 13 of whom have been classified as obese (Davis, 2002). Perform the following on this dataset
+ 
+a. Construct boxplots by group and discuss. 
+
+Similar to earlier, we make two subsets dividing up the control and obese groups. At first glance, ones eyes will probably notice the outliers in the second plot showing the phosphate levels for the obese subset. After examining the y-axis, we can see that they differ between the plots and makes up for much of the differences in the plots. Surprisingly, there is not as much of a difference as I would have expected. Both subsets have similar trends over time and the control group has larger IQR ranges that makes up a little for the outliers in the obese set.
+      
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+data(phosphate)
+
+# split data into subsets
+control <- subset(phosphate, group == 'control')
+obese <- subset(phosphate, group == 'obese')
+
+# base r plots of subsets
+layout(matrix(1:2, ncol=2))
+boxplot(control[,2:9])
+boxplot(obese[,2:9])
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# replicate prior plots
+grid.arrange(
+ggplot(melt(control), aes(x=variable, y=value, fill=variable))+
+  geom_boxplot(aes(fill=variable))+
+  labs(title = 'Phosphate Levels by Time - Control', x = 'Time (Hours)', y = 'Phosphate Level' ,fill = 'Time'),
+
+ggplot(melt(obese), aes(x=variable, y=value, fill=variable))+
+  geom_boxplot(aes(fill = variable))+
+  labs(title = 'Phosphate levels by Time - Obese', x = 'Time (Hours)', y = 'Phosphate Level', fill = 'Time'),
+nrow = 1)
+
+
+```
+   
+b. Produce separate plots of the profiles of the individuals in each group.
+
+      
+```{r, echo = FALSE}
+# use rownames for column
+control$individual <- factor(rownames(control))
+obese$individual <- factor(rownames(obese))
+
+
+```
+ 
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# ggplot of phosphate levels
+grid.arrange(
+ggplot(data=melt(control), aes(x=variable, y=value))+
+  geom_line(aes(group=individual, color=individual))+
+  labs(title='Control Group Phosphate Levels Over Time', x='Time (Hours)', y='Phosphate Level'),
+
+ggplot(data=melt(obese), aes(x=variable, y=value))+
+  geom_line(aes(group=individual, color=individual))+
+  labs(title='Obese Group Phosphate Levels Over time', x='Time (Hours)', y='Phosphate Level'),
+nrow=1)
+
+```
+  
+```{r, echo = FALSE}
+controlLong <- melt(control)
+obeseLong <- melt(obese)
+
+controlLong$variable <- as.numeric(controlLong$variable)
+obeseLong$variable <- as.numeric(obeseLong$variable)
+names(controlLong)[3] <- 'Time'
+names(obeseLong)[3] <- 'Time'
+
+
+``` 
+
+```{r, echo = FALSE, fig.width = 10, fig.height= 5}
+
+# base r plot  with plots
+layout(matrix(1:2, ncol = 2))
+plot(x = controlLong$Time, y = controlLong$value, type = 'p', pch = 1,
+     main = 'Control Group Phosphate Levels\nOver Time',
+     xlab = 'Time (in hours)', ylab = 'Phosphate Level')
+ncol <- length(unique(controlLong[,'individual']))
+colors <- rainbow(ncol)
+
+# loop through each row to add lines for points
+for (i in 1:length(unique(controlLong[, 'individual']))){
+  lines(controlLong$Time[controlLong$individual == i],
+        controlLong$value[controlLong$individual == i], col=colors[i])
+}
+# repeat previous steps but for obese subset
+plot(x = obeseLong$Time, y = obeseLong$value, type = 'p', pch = 1,
+     main = 'Obese Group Phosphate Levels\nOver Time',
+     xlab = 'Time (in hours)', ylab = 'Phosphate Level')
+# create vector of row numbers to loop through
+ncol2 <- c(21:33)
+colors2 <- rainbow(ncol2)
+
+for (i in ncol2){
+  lines(obeseLong$Time[obeseLong$individual == i],
+        obeseLong$value[obeseLong$individual == i], col = colors2[i-20])
+}
+
+```
+
+
+
+c. Guided by how these plots fit, which linear mixed effects models do you think might be sensible? (Hint: Discuss intercept and slope, intercept and interaction).
+
+
+When looking at the plots by individual, both groups seem to have some individuals that are very volatile while some are much less volatile. In general, the control group looks to have a more defined 'u' or 'v' shape than the obese group. Again, the scaling of the axis also shows that the obese have some outliers on the high end.
+
+GGplot was much easier in this exercise and did not require looping through like base R. Could have just used the plotting of points that base R gave by default but it seemed more beneficial to have a color coded line for each user. This required looping through the users and color coding for each iteration.
+
+Regarding linear mixed effects model, I believe there is a distinction to be made if models where compared with and without interaction between group(obese/control) and time. While the models have the same overall 'u' shape, the obese isn't as 'defined' in shape as the control group.
+    
+d. Convert the data to long version and fit the model of your choice and discuss the results. 
+
+Personally, I do not like using the reshape function from lecture and HSAUR so I used pipes instead to go step by step (refrence R for Data Science) and easier to troubleshoot. To compare models, the first will have interaction between time and group while the second will not. All other parts of the model are the same. We can see from results that the mean squared error value for the model with interaction is lower than the model without interaction. The plot for the interaction model is also shown and the non-interaction model would be fairly similar.
+
+```{r, echo = FALSE}
+# struggling with errors for reshape function so used piping instead
+phosphate$subject <- factor(rownames(phosphate))
+phosphate <- phosphate %>%
+  gather(time,phosphateLevel, 3:9) %>%
+  mutate(time = factor(gsub(time,pattern="[[:alpha:]]",replacement='')))
+
+
+phosphateLmer1 <- lmer(phosphateLevel ~ t0 + time * group + (1|subject),data=phosphate)
+phosphateLmer2 <- lmer(phosphateLevel ~ t0 + time + group + (1|subject), data = phosphate)
+
+
+cftest(phosphateLmer1)
+cftest(phosphateLmer2)
+
+       
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# residual plots with qqnorm and qqline func. Use residual function from earlier
+layout(matrix(1:2, ncol = 2))
+qint <- ranef(phosphateLmer1)$subject[['(Intercept)']]
+qres <- residuals(phosphateLmer1, phosphate$t0)
+qqnorm(qint, ylab = 'Estimated random intercepts',
+       xlim = c(-3, 3), ylim = c(-20, 20),
+       main = 'Random intercepts')
+qqline(qint, col='red', lwd=3)
+qqnorm(qres, xlim = c(-3, 3), ylim = c(-20, 20),
+       ylab = 'Estimated residuals',
+       main = 'Residuals')
+qqline(qres, col='red', lwd=3)
+```      
+   
+   
+```{r, echo = FALSE}
+# make prediction from model
+phosphatePred <- predict(phosphateLmer1, newdata=phosphate)
+phosphatePred2 <- predict(phosphateLmer2, newdata=phosphate)
+
+phosphateError <- round(mean((phosphate$phosphateLevel - phosphatePred)^2), 3)
+phosphateError2 <- round(mean((phosphate$phosphateLevel - phosphatePred2)^2),3)
+
+phosCol <- c('Interaction', 'No Interaction')
+errorRate <- c(phosphateError, phosphateError2)
+
+
+kable(cbind(phosCol, errorRate), col.names = c('','MSE'), caption = 'Linear Mixed-Effects Model Interaction Comparison')
+
+```

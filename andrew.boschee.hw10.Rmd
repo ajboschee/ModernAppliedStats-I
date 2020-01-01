@@ -1,0 +1,369 @@
+---
+title: "Homework 10"
+author: "Andrew Boschee"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+```{r, echo = FALSE}
+# load libraries
+
+library(HSAUR3)
+library(ggplot2)
+library(gridExtra)
+#install.packages('gee')
+library(gee)
+library(lme4)
+library(multcomp)
+library(knitr)
+#install.packages('geepack')
+library(geepack)
+library(Matrix)
+library(stats)
+#install.packages('MuMIn')
+library(MuMIn)
+#install.packages('MESS')
+library(MESS)
+library(dplyr)
+```
+
+*No collaborators. Outside Resources: R For Data Science, Introduction to Statistical Learning, Rdocumentation.com, statsoft.com*
+
+1. Consider the \textbf{respiratory} data from the \textbf{HSAUR3} package.
+
+a. Investigate the use of other correlational structures than the independence and exchangeable structures used in the text for the respiratory data.
+    
+```{r, echo = FALSE}
+# load dataset
+data(respiratory, package = 'HSAUR3')
+
+
+resp <- subset(respiratory, month > '0')
+resp$baseline <- rep(subset(respiratory, month == '0')$status, rep(4,111))
+resp$nstat <- as.numeric(resp$status == 'good')
+resp$month <- resp$month[, drop = TRUE]
+#head(resp, n = 5)
+
+# rename column 
+names(resp)[names(resp) == 'treatment'] <- 'trt'
+levels(resp$trt)[2] <- 'trt'
+```
+
+```{r, echo = FALSE, include =FALSE}
+# build models to compare
+resp_glm <- glm(status ~ centre + trt + gender + baseline + age, data = resp, family = 'binomial')
+
+resp_gee1 <- gee(nstat ~ centre + trt + gender + baseline + age, data = resp, family = 'binomial', id = subject, corstr = 'independence', scale.fix = TRUE, scale.value = 1)
+
+resp_gee2 <- gee(nstat ~ centre + trt + gender + baseline + age, data = resp, family = 'binomial', id = subject, corstr = 'exchangeable', scale.fix = TRUE, scale.value = 1)
+
+resp_gee3 <- gee(nstat ~ centre + trt + gender + baseline + age, data = resp, family = 'binomial', id = subject, corstr = 'AR-M', Mv = 1, scale.fix = TRUE, scale.value =1)
+
+resp_gee4 <- gee(nstat ~ centre + trt + gender + baseline + age, data = resp, family = 'binomial', id = subject, corstr = 'unstructured', scale.fix = TRUE, scale.value = 1)
+
+#summary(resp_gee1)
+```
+
+```{r, echo = FALSE}
+#summary(resp_gee3)$coef[,3]
+#summary(resp_gee1)$coef[,3]
+
+```
+
+```{r, echo = FALSE, fig.width = 10, fig.height=5}
+# pull naive and robust columns from summary of each model
+#kable(summary(resp_gee1)$coef[c(2:6),c(2:5)], col.names = c('NaiveS.E.','NaiveZ','RobustS.E.','RobustZ'))
+#kable(summary(resp_gee2)$coef[c(2:6),c(2:5)], col.names = c('NaiveS.E.','NaiveZ','RobustS.E.','RobustZ'))
+kable(summary(resp_gee3)$coef[c(2:6),c(3,5)], col.names = c('NaiveZ','RobustZ'), caption = 'AutoRegressive Results')
+kable(summary(resp_gee4)$coef[c(2:6),c(3,5)], col.names = c('NaiveZ','RobustZ'), caption = 'Unstructured Results')
+
+```
+   
+Results: Above, we can see results from the summary of the Autoregressive model and Unstructured model. We can see that gendermale and age show significance with lower 'naiveZ' and 'RobustZ' values that would translate to low p-values. These results were obtained by taking the examples from the text and substituting in 'AR-M' (with Mv =1 parameter) and 'unstructured' for 'corstr' parameter.
+   
+\pagebreak   
+   
+## Quasilikelihood Independence Criterion (QIC)
+
+
+b. Which model is the best? Compare the following models: independent, exchangable, and what ever models you tried in part (a). Justify your answer. (Hint: use QIC (in \textbf{MESS}), MSE, misclassification rate, comparison of naive vs robust Z-score, or another method, be sure to state your method)
+    
+```{r, echo = FALSE}
+respGeeGlmIndependent <- geeglm(nstat ~ centre + trt + gender + baseline + age, data = resp, family = 'binomial', id = subject, corstr = 'independence')
+
+respGeeGlmExchange <- geeglm(nstat ~ centre + trt + gender + baseline + age, data = resp, family = 'binomial', id = subject, corstr = 'exchangeable')
+
+respGeeGlmAr1 <- geeglm(nstat ~ centre + trt + gender + baseline + age, data = resp, family = 'binomial', id = subject, corstr = 'ar1')
+
+respGeeGlmUnstructure <- geeglm(nstat ~ centre + trt + gender + baseline + age, data = resp, family = 'binomial', id = subject, corstr = 'unstructured')
+
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# apply QIC function to eac model
+IndependentQIC <- QIC(respGeeGlmIndependent)[1]
+ExchangeableQIC <- QIC(respGeeGlmExchange)[1]
+AutoRegressiveQIC <- QIC(respGeeGlmAr1)[1]
+UnstructuredQIC <- QIC(respGeeGlmUnstructure)[1]
+
+# store results as vector
+compVec <- c(IndependentQIC, ExchangeableQIC, AutoRegressiveQIC, UnstructuredQIC)
+
+colNameVec <- c('Independent', 'Exchangeable','AutoRegressive','Unstructured')
+
+# output with kable
+kable(cbind(colNameVec, compVec), col.names = NULL, caption = 'QIC by Model Method')
+```
+
+
+## Misclassification by Model
+
+```{r, echo = FALSE}
+
+# predictions for each method
+independentPred <- predict(respGeeGlmIndependent, newdata = resp, type = 'response')
+exchangePred <- predict(respGeeGlmExchange, newdata = resp, type = 'response')
+arPred <- predict(respGeeGlmAr1, newdata = resp, type = 'response')
+unstructuredPred <- predict(respGeeGlmUnstructure, newdata = resp, type = 'response')
+
+# store results in table
+independentTable <- table(resp$status, independentPred >= 0.5)
+exchangeTable <- table(resp$status, exchangePred >= 0.5)
+arTable <- table(resp$status, exchangePred >= 0.5)
+unstructureTable <- table(resp$status, unstructuredPred >= 0.5)
+
+# calculate misclassification
+independentError <- 1 - (sum(diag(independentTable)) / sum(independentTable))
+exchangeError <- 1 - (sum(diag(exchangeTable)) / sum(exchangeTable))
+arError <- 1 - (sum(diag(arTable)) / sum(arTable))
+unstructureError <- 1 - (sum(diag(unstructureTable)) / sum(unstructureTable))
+
+```
+
+
+```{r, echo = FALSE, fig.width = 10, fig.height=5}
+# vectors to store output
+colNameVec2 <- c('Independent', 'Exchangeable','AutoRegressive','Unstructured')
+compVec2 <- c(independentError[1], exchangeError[1], arError[1], unstructureError[1])
+
+#errorComp <- cbind(colNameVec2, compVec2)
+
+kable(cbind(colNameVec2, compVec2), col.names = NULL, caption = 'Misclassification Rates')
+
+```
+
+## NaiveZ and RobustZ Comparison
+
+```{r, echo = FALSE, fig.width = 10, fig.height=5}
+# pull naive and robust columns from summary of each model
+kable(summary(resp_gee1)$coef[c(2:6),c(3,5)], col.names = c('NaiveZ','RobustZ'), caption = 'Independent Results')
+kable(summary(resp_gee2)$coef[c(2:6),c(3,5)], col.names = c('NaiveZ','RobustZ'), caption = 'Exchangeable Results')
+```
+
+
+\pagebreak
+
+
+
+```{r, echo = FALSE, fig.width = 10, fig.height=5}
+
+kable(summary(resp_gee3)$coef[c(2:6),c(3,5)], col.names = c('NaiveZ','RobustZ'), caption = 'AutoRegressive Results')
+kable(summary(resp_gee4)$coef[c(2:6),c(3,5)], col.names = c('NaiveZ','RobustZ'), caption = 'Unstructured Results')
+
+```
+
+Rather than just creating models for 'Autoregressive' and 'Unstructured', I also created 'Independent' and 'Exchangeable' models to compare all methods using QIC measurement and misclassification rate after fitting them as 'geeglm' models to line up with models from part 'a' for overall comparison. The most easy to look at is the misclassification rate and by surprise, all models give the same error rate at .259. To look a little deeper, we can reference the QIC scores and see that they are farely close as well. When looking at QIC values, the unstructured model has a very slight edge over the exchangeable model.
+
+
+2. The data set \textbf{schizophrenia2} from \textbf{HSAUR3} package were collected in a follow-up study of women patients with schizophrenia (Davis, 2002). The binary response recorded at 0, 2, 6, 8 and 10 months after hospitalization was ``thought disorder'' (absent or present). The single covariate is the factor indicating whether a patient had suffered early or late onset of her condition (age of onset less than 20 years or age of onset 20 years or above). The question of interest is whether the course of the illness differs between patients with early and late onset schizophrenia. (https://www.rdocumentation.org/packages/HSAUR3/versions/1.0-9/topics/schizophrenia2)
+Investigate this question using 
+
+a. plots and summary statistics
+    
+```{r, echo = FALSE}
+# load dataset
+data('schizophrenia2', package = 'HSAUR3')
+
+# make month factor
+schizophrenia2$month <- as.factor(schizophrenia2$month)
+```
+
+
+```{r, echo = FALSE}
+# subset early and late onset by years
+early <- subset(schizophrenia2, onset == '< 20 yrs')
+late <- subset(schizophrenia2, onset == '> 20 yrs')
+
+# make factor and exclude null values
+early$disorder <- factor(early$disorder, exclude = NULL)
+late$disorder <- factor(late$disorder, exclude = NULL)
+
+# make droput level for each subset
+levels(early$disorder)[3] <- 'dropout'
+levels(late$disorder)[3] <- 'dropout'
+```
+
+
+```{r, echo = FALSE}
+
+# subset data and get counts from early dataset
+earlyOnset <- early %>%
+    group_by(disorder, month) %>%
+    summarize(count = n()) %>%
+    mutate(disorderCount = sum(count), proportion = count / sum(count)) %>%
+    ungroup()
+
+# add columns stating early
+earlyOnset$onset <- 'early'
+
+# subset data and get counts from late onset data
+lateOnset <- late %>%
+    group_by(disorder, month) %>%
+    summarize(count = n()) %>%
+    mutate(disorderCount = sum(count), proportion = count / sum(count)) %>%
+    ungroup()
+
+# add coulumn stating late
+lateOnset$onset <- 'late'
+
+#head(earlyOnset)
+sCount <- table(schizophrenia2$disorder, schizophrenia2$onset)
+```
+
+```{r, echo = FALSE, fig.width = 10, fig.height=5}
+# subsets for disorder and month by onset
+sub1 <- subset(schizophrenia2, onset == '< 20 yrs')$disorder
+sub2 <- subset(schizophrenia2, onset == '> 20 yrs')$disorder
+sub3 <- subset(schizophrenia2, onset == '< 20 yrs')$month
+sub4 <- subset(schizophrenia2, onset == '> 20 yrs')$month
+
+# assign subsets to tables
+tab1 <- table(sub1, sub3)
+tab2 <- table(sub2, sub4)
+
+# base r plot of onset by month
+layout(matrix(1:2, ncol=2))
+barplot(tab1, main = 'Count Early Onset by Month', xlab = 'Months', col = c('red','green'), legend = c('Absent','Present'))
+barplot(tab2, main = 'Count Late Onset by Month', xlab = 'Months', col = c('red','green'), legend = c('Absent','Present'))
+```
+
+```{r, echo = FALSE}
+#barplot(sCount, main = 'Disorder Count by Onset')
+```
+
+```{r, echo = FALSE, fig.width = 10, fig.height=5}
+# ggplot version or prior plot
+
+grid.arrange(
+ggplot(earlyOnset, aes(x = month, y = count, fill = disorder)) +
+    geom_bar(stat = 'identity') +
+    labs(title = 'Count Early Onset by Month'),
+
+ggplot(lateOnset, aes(x=month, y = count, fill = disorder))+
+    geom_bar(stat= 'identity')+
+    labs(title = 'Count Late Onset by Month'), nrow = 1)
+```
+    
+
+When comparing the above plots, my first idea is comparing absent and present between late/early onset. When doing that, we can see that the results are very similar. The ggplot shows dropouts and what does stand out a little is that there were no dropouts until the eigth month in comparison to second month with early onset. Without any additional information regarding those dropouts, there isn't much else to takeaway at the moment. 
+
+
+## Generalized Estimation Equation
+    
+b. the GEE approach
+
+Similar to the first exercies, each modeling method is applied using geeglm.
+   
+```{r, echo = FALSE}
+
+# make numeric column
+schizophrenia2$hasdisorder <- as.numeric(schizophrenia2$disorder == 'present')
+
+# keep non-null rows
+schizophrenia2 <- schizophrenia2[!is.na(schizophrenia2$hasdisorder),]
+
+
+# build geeglm for each method
+schGeeInd <- geeglm(hasdisorder ~ onset, data = schizophrenia2, family = 'binomial', id = subject, corstr = 'independence')
+
+schGeeExch <- geeglm(hasdisorder ~ onset, data = schizophrenia2, family = 'binomial', id = subject, corstr = 'exchangeable')
+
+schGeeUnstr <- geeglm(hasdisorder ~ onset, data = schizophrenia2, family = 'binomial', id = subject, corstr = 'unstructured')
+
+schGeeAuto <- geeglm(hasdisorder ~ onset, data = schizophrenia2, family = 'binomial', id = subject, corstr = 'ar1')
+
+```
+
+## QIC Model Comparison
+
+```{r, echo = FALSE, fig.width = 10, fig.height=5}
+# find QIC for each method
+indQIC <- QIC(schGeeInd)[1]
+excQIC <- QIC(schGeeExch)[1]
+unstQIC <- QIC(schGeeUnstr)[1]
+autQIC <- QIC(schGeeAuto)[1]
+
+# store output in variable
+schizQIC <- c(indQIC, excQIC, unstQIC, autQIC)
+schizCol <- c('Individual','Exchangeable','Unstructured','AutoRegressive')
+
+# output vectors
+kable(cbind(schizCol, schizQIC), col.names = NULL, caption = 'QIC by Modeling Method')
+
+```
+
+## Mixed Effects Model
+    
+c. mixed effects model (lmer) from previous chapter
+
+lmer function applied with cftest function to give output. From the output of cftest, we can see that onset is not seen statistically significant.
+
+```{r, echo = FALSE, fig.width = 10, fig.height=5}
+# build mixed effects model
+schizophreniaLmer <- lmer(hasdisorder ~ onset + (1|subject), data = schizophrenia2)
+
+cftest(schizophreniaLmer)
+```
+
+## Model Comparison
+
+d. Is there a difference? What model(s) work best? Describe your results.
+    
+I bellieve that misclassification rate is the most straight-forward result to give, especially if results are for less technical/statistical focused audience. If we are looking solely at misclassification rate, no model is better than the other in this situation with all models outputting .353 misclassification rate. By using the same approach as exercise 1 and looking at QIC results, the autoregressive model had the lowest QIC value. Again, the results were very close with no model performing significantally better than the other.
+    
+```{r, echo = FALSE, fig.width = 10, fig.height=5}
+# make predictions for each method
+indPred <- predict(schGeeInd, newdata = schizophrenia2, type = 'response')
+exchPred <- predict(schGeeExch, newdata = schizophrenia2, type = 'response')
+unstPred <- predict(schGeeUnstr, newdata = schizophrenia2, type = 'response')
+ar1Pred <- predict(schGeeAuto, newdata = schizophrenia2, type = 'response')
+linMixPred <- predict(schizophreniaLmer, newdata = schizophrenia2, type = 'response')
+
+# tables for each method
+indTable <- table(schizophrenia2$hasdisorder, indPred >= .5)
+exchTable <- table(schizophrenia2$hasdisorder, exchPred >= .5)
+unstTable <- table(schizophrenia2$hasdisorder, unstPred >= .5)
+ar1Table <- table(schizophrenia2$hasdisorder, ar1Pred >= .5)
+linMixTable <- table(schizophrenia2$hasdisorder, linMixPred >= .5)
+
+# calculate misclassification
+indErr <- 1 - (sum(diag(indTable)) / sum(indTable))
+exchErr <- 1 - (sum(diag(exchTable)) / sum(exchTable))
+unstErr <- 1 - (sum(diag(unstTable)) / sum(unstTable))
+ar1Err <- 1 - (sum(diag(ar1Table)) / sum(ar1Table))
+linMixErr <- 1 - (sum(diag(linMixTable)) / sum(linMixTable))
+
+# output with kable
+kable(cbind(indErr, exchErr, unstErr, ar1Err, linMixErr), col.names = c('Independent','Exchangeable','Unstructured','Autoregressive', 'Mixed-Effects'), caption = 'Misclassification Rate by Model Method')
+
+```
+    
+    
+    
+    
+    
+    
+   
