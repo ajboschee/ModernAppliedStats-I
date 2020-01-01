@@ -1,0 +1,285 @@
+---
+title: "Homework 8"
+author: "Andrew Boschee"
+output: pdf_document
+---
+
+*No collaborators, *
+*Outside Resources: R Graphics Cookbook, Rdocumentation.com* 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+```{r, echo = FALSE}
+library(HSAUR3)
+#install.packages('wordcloud')
+library(wordcloud)
+#install.packages('quantreg')
+library(quantreg)
+#install.packages('gamlss.data')
+library(gamlss.data)
+library(TH.data)
+library(rpart.plot)
+library(ggplot2)
+library(ggdendro)
+library(partykit)
+library(lattice)
+library(gridExtra)
+library(knitr)
+#install.packages('mltools')
+library(mltools)
+```
+
+Please do the following problems from the text book R Handbook and stated.
+
+1. Consider the {\textbf{clouds}} data from the {\textbf{HSAUR3}} package
+   
+a) Review the linear model fitted to this data in Chapter 6 of the text book and report the model and findings. 
+  
+## Cloud Model Summary  
+    
+```{r, echo = FALSE}
+# load dataset
+data(clouds)
+#head(clouds)
+
+# build cloud model from chapter 6
+cloudsFormula <- rainfall ~ seeding + seeding:(sne + cloudcover + prewetness + echomotion) + time
+
+# store linear model
+cloudsLm <- lm(cloudsFormula, data = clouds)
+
+#print summary
+summary(cloudsLm)
+```
+ 
+## Linear Model 
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# store resideuals and fitted values from model
+cloudsResid <- residuals(cloudsLm)
+cloudsFitted <- fitted(cloudsLm)
+
+psymb <- as.numeric(clouds$seeding)
+
+# base r plot of 
+layout(matrix(1:2, ncol=2))
+plot(rainfall ~ sne, data =clouds, pch = psymb, xlab = 'S-Ne criterion')
+abline(lm(rainfall ~ sne, data = clouds, subset = seeding == 'no'))
+abline(lm(rainfall ~ sne, data = clouds, subset = seeding == 'yes'), lty =2)
+legend('topright', legend = c('No seeding', 'seeding'), pch = 1:2, lty = 1:2, bty ='n')
+
+# plot of residuals
+plot(cloudsFitted, cloudsResid, xlab = 'Fitted Values', ylab = 'Residuals', type = 'n',
+     ylim = max(abs(cloudsResid)) * c(-1,1))
+abline(h=0, lty=2)
+textplot(cloudsFitted, cloudsResid, words = rownames(clouds), new = FALSE)
+```
+
+
+b) Fit a median regression model. See Below...
+
+```{r, echo = FALSE}
+# fit mdeian regression model with tau at .5
+cloudsQuant <- rq(cloudsFormula, data = clouds, tau = 0.5)
+
+# output summary
+#summary(cloudsQuant)
+
+```
+
+## Median Regression Model      
+c) Compare the two results. 
+
+
+```{r, echo = FALSE}
+qtResid <- residuals(cloudsQuant)
+qtFitted <- fitted(cloudsQuant)
+
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+layout(matrix(1:2, ncol=2))
+plot(rainfall ~ sne, data = clouds, pch = psymb, xlab = 'S-Ne criterion')
+abline(rq(rainfall ~ sne, data = clouds, subset = seeding == 'no'))
+abline(rq(rainfall ~ sne, data = clouds, subset = seeding == 'yes'), lty = 2)
+legend('topright', legend = c('No seeding', 'Seeding'), pch =1:2, lty = 1:2, bty = 'n')
+
+# plot of residuals
+plot(qtFitted, qtResid, xlab = 'Fitted Values', ylab = 'Residuals', type = 'n',
+     ylim = max(abs(qtResid)) * c(-1,1))
+abline(h=0, lty=2)
+textplot(qtFitted, qtResid, words = rownames(clouds), new = FALSE)
+```
+
+Used the rq() function with the cloudsFormula variable, clouds dataset, and tau set to .5 storing it in the cloudsQuant variable and will create two variables to store the residuals and fitted values for plotting.We can see that there are significantally lower residuals in this plot when comparing it to the plot in part 'a'. This shows us the benefits of quantile regression with a very simple plot. I believe that the second plot of the residuals is the most useful to get a quick takeaway of quantile regression impact. For the purpose of the model and topic at hand we can see that first plot in part a and part c differ regarding seeding and not seeding. The outliers don't have that significant impact on the second model that is easily observed in part a.
+
+## Regression Tree vs. Quantile Regression
+
+2. Reanalyze the {\textbf{bodyfat}} data from the {\textbf{TH.data}} package. 
+
+a) Compare the regression tree approach from chapter 9 of the textbook to median regression and summarize the different findings.
+
+I find this exercise odd as my first instinct with a regression tree is to examine the importance of variables with some detail and see median regression model as a way to look at one specific variable. We can see that the plot from the regression tree gives us some specified information about these variables while the median regression plot allows for a more high level and quick analysis. The summaries are similar in the fact that the regression tree summary gives very high detail of the model while the summary of median regression gives a simple summary of the boundaries. I was a little surprised with regression tree returning a lower mean squared error in comparison to median regression model.
+
+    
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# load dataset
+data(bodyfat)
+
+# build regression tree from prior assignment
+bodyfatRpart <- rpart(DEXfat ~ age + waistcirc + hipcirc +elbowbreadth + kneebreadth, 
+                      data = bodyfat, control = rpart.control(minsplit =10))
+
+# plot decision tree
+plot(as.party(bodyfatRpart), tp_args =(list(id=FALSE)))
+
+```
+
+```{r, echo = FALSE}
+#summary(bodyfatRpart)
+
+```
+```{r, echo = FALSE}
+# build quartile model
+bodyfatRq <- rq(DEXfat ~ age + waistcirc + hipcirc + elbowbreadth + kneebreadth,
+                data = bodyfat, tau = 0.5)
+
+# print summary
+quantileSummary <- summary(bodyfatRq, covariance = TRUE, hs=TRUE)
+
+kable(quantileSummary$coefficients[,4], col.names = 'P-Values',caption = 'P-Values by Variable')
+
+# make preds and find MSE
+bodyfatPred <- predict(bodyfatRpart, data = bodyfat)
+bodyfatPred2 <- predict(bodyfatRq, data = bodyfat)
+bodyfatMSE <- mean((bodyfat$DEXfat - bodyfatPred)^2)
+quantMSE <- mse(bodyfatPred2, bodyfat$DEXfat)
+MSEVals <- c(bodyfatMSE, quantMSE)
+MSEmods <- c('Regression Tree','Quantile Regression')
+```
+
+```{r, echo = FALSE}
+kable(cbind(MSEmods,MSEVals), caption = 'MSE Comparison', col.names = c('Model','MSE'))
+```
+    
+    
+    
+b) Choose one independent variable. For the relationship between this variable and DEXfat, create linear regression quantile models for the 25%, 50% and 75% quantiles. Plot DEXfat vs that independent variable and plot the lines from the models on the graph. 
+
+Waistsize was one of the variables that had a large impact on this model so I chose that as the independent variable for this part.     
+    
+```{r, echo = FALSE}
+# Make quantile models of each percintile using waistcirc independent variable for plotting
+qt25 <- rq(DEXfat ~ waistcirc, data = bodyfat, tau = 0.25)
+qt50 <- rq(DEXfat ~ waistcirc, data = bodyfat, tau = 0.5)
+qt75 <- rq(DEXfat ~ waistcirc, data = bodyfat, tau = 0.75)
+
+# put models together to create dataframe
+qtModel <- rq(DEXfat ~ waistcirc, data = bodyfat, tau = c(.25,.5,.75))
+
+qtModelDf <- as.data.frame(t(coef(qtModel)))
+
+```
+ 
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# plot model with each quantile color coded
+plot(bodyfat$waistcirc, bodyfat$DEXfat, xlab = 'WaistSize', ylab = 'Bodyfat', main = 'Quantile Regression of Waist Circumfrence and Bodyfat')
+abline(qt25)
+abline(qt50)
+abline(qt75)
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# ggplot version of prior plot
+ggplot(data = bodyfat, aes(x=waistcirc, y=DEXfat))+
+  geom_point()+
+  geom_abline(aes(intercept = qtModelDf$`(Intercept)`, slope = qtModelDf$waistcirc), data = qtModelDf)+
+  labs(title='Quantile Regression of Waist Circumfrence and Bodyfat')
+
+```
+
+\pagebreak
+
+## Quantile Curves
+
+3. Consider {\textbf{db}} data from the lecture notes (package {\textbf{gamlss.data}}). Refit the additive quantile regression models presented ({\textbf{rqssmod}}) with varying values of $\lambda$ (lambda) in {\textbf{qss}}. How do the estimated quantile curves change?
+
+As we increase lambda, the smoothness of the quantile curves drastically changes. With lambda set to zero, the line is very volatile and as we reach .5 the line is fairly smooth. There is not too much change as we increase past that value for lambda. I was a little surprised at how rapidly the lines smoothed in comparison to the example from the lecture. A good takeaway from the plot is that we can see that there is a little jump at about 10 years when looking at the plot with lambda set to 1.
+
+```{r, echo = FALSE}
+# load dataset
+data(db)
+db2 <- db
+
+# declare tau vector
+tau <- c(.01, .33, .67, .99)
+
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=10}
+
+# Function to accept lambda as argument
+qtCurve <- function(lambda){
+  rqssmod <- vector(mode = 'list', length = length(tau))
+  db2$lage <- with(db2, age^(1/3))
+  # repeat for each tau value
+  for (i in 1:length(tau))
+    rqssmod[[i]] <- rqss(head ~ qss(lage, lambda = lambda),
+                         data = db2, tau=tau[i])
+  
+  # make predictions at each increment
+  gage <- seq(from = min(db2$age), to =max(db2$age), length = 100)
+  p <- sapply(1:length(tau), function(i){
+    predict(rqssmod[[i]], newdata = data.frame(lage = gage^(1/3)))
+  })
+  
+  pfunc <- function(x, y, ...){
+    panel.xyplot(x=x, y=y,...)
+    apply(p, 2, function(x) panel.lines(gage, x))
+    panel.text(rep(max(db2$age), length(tau)),
+               p[nrow(p),], label = tau, cex = 0.9)
+  }
+  
+  # xy plot comparing head and age
+  xyplot(head ~ age, data = db2,
+         main = paste('Age vs. Head Circumfrence for Lambda =', lambda),
+         xlab = 'Age (years)',
+         ylab = 'Head Circumference (cm)',
+         pch = 19,
+         scales = list(x = list(relation = 'free')),
+         layout = c(1,1), col = rgb(.1,.1,.1,.1),
+         panel = pfunc)
+}
+
+grid.arrange(
+qtCurve(0),
+qtCurve(.01),
+qtCurve(.5),
+qtCurve(1),
+nrow=2)
+```
+
+\pagebreak
+
+## Quantile Regression Summary
+
+4. Read the paper by Koenker and Hallock (2001), posted on D2L. Write a one page summary of the paper. This should include but not be limited to introduction, motivation, case study considered and findings. 
+
+INTRODUCTION
+
+The paper from Koenker and Hallock titled 'Quantile Regression' gives several scenarios where quantile regression is used to sum up absolute residuals rather than common approach of minimizing the sum of squared residuals. Using a median quantile regression model in comparison to the common linear regression model can help with issues of bias from outliers and skewness altering the mean. Examples where this is applied in the paper include infant birthweight determinants, expenses vs income, and executive compensation by firm market value. With the significant software and linear programming capabilities out there today, these models can be applied with ease.
+
+MOTIVATION
+
+The world is not going to give clean data without abnormalities that one dreams of. This ends up causing bias and unpredictable roadblocks that certain methods aren't ideal for. Quantile regression can help in some instances providing potential for fitting data better with an estimation coming from the median. From examples given (Least Squares Method of conditional mean from Engel's example), just a couple extreme outliers can cause very negative affects on the model.
+
+CASE STUDY CONSIDERED
+
+While both the food expenses vs income study and infant birthweight determinants study are both good examples, the expense study gets straight to the point when looking at the potential issues caused from outliers. This study examined the relationship between food expenses in relation to the consumers income. This is interesting due to the fact that there are many factors that come into account with peoples spending habits aside from just their income. Regarding the impact of what modeling method to use, we will see the impact that outliers on one end of the spectrum can have on the overall fitting of the model to the rest of the data.
+
+FINDINGS
+
+I believe that the plot showing the line for conditional mean and quantile regression sums up the point trying to be made here. While the line for the conditional mean model is sitting above nearly all of the points on the low end of the x-axis, the quantile regression plot is fit much better and represents the model much better overall. As stated earlier, the data we study in this world is not perfect and outliers will come about on a regular basis. With the advancement in statistical software, quantile regression is a simple way to handle these circumstances.
+

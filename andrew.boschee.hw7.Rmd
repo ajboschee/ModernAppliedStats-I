@@ -1,0 +1,261 @@
+---
+title: "Homework 7"
+author: "Andrew Boschee"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+*No collaborators, *
+*Outside Resources: R Graphics Cookbook, Rdocumentation.com* 
+
+```{r, echo=FALSE}
+#install.packages('survival')
+library(survival)
+library(ggplot2)
+#install.packages('survminer')
+library(survminer)
+library(HSAUR3)
+#install.packages('ISwR')
+library(ISwR)
+#install.packages('coin')
+library(coin)
+library(dplyr)
+library(knitr)
+library(gridExtra)
+library(partykit)
+```
+
+1. An investigator collected data on survival of patients with lung cancer at Mayo Clinic. The investigator would like you, the statistician, to answer the following questions and provide some graphs. Use the \textbf{cancer} data located in the \textbf{survival} package.
+
+a. What is the probability that someone will survive past 300 days?
+See Table 1 below...
+
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+# load dataset
+data(cancer)
+
+# build first model of survival
+survModel <- survfit(Surv(time, status == 2)~1, data = cancer)
+
+# pull survival probability from summary
+survProb300 <- summary(survModel, time = 300)[6]
+```
+
+b. Provide a graph, including 95% confidence limits, of the Kaplan-Meier estimate of the entire study.
+
+
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+
+# base r plot with confidence limits
+plot(survModel, xlab = 'Time (Days)', ylab = 'Survival Probability', main = 'Probability of Survival by # of Days',
+     col = c('black','red','red'))
+legend('topright', c('Survival by # of Days', 'CI Limits'), col = c('black','red','red'), lty = c(1,2,2))
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=5}
+
+# replicate of prior plot with ggsurvplot
+ggsurvplot(survModel, data = cancer, conf.int = TRUE, palette = c('black'),
+           title = 'Probability of Survival by # of Days')
+```
+
+```{r,echo=FALSE, fig.width=10, fig.height=5}
+# print probability of survival
+kable(survProb300, col.name = 'Survival Probability', caption = 'Probability of Survival Past 300 Days')
+
+```   
+    
+c. Is there a difference in the survival rates between males and females? Provide a formal statistical test with a p-value and visual evidence.
+
+There is a significant difference when it comes to gender and survival rates. With 67% survival for females and 44% survival for males and a small p-value in Table 3, gender plays a major role in lung cancer survival. 
+
+Saw this as a good time to look into the Cox Proportional Hazards model and see what else plays key roles outside of just age and gender that we are exploring. This brought up the ph.ecog variable that is the most signficant along with ph.karno. A conditional inference tree is also provided to show visualization of gender along with the most signficant variable at the first split of the tree.
+    
+```{r, echo = FALSE}
+# make subsets by gender
+survMale <- subset(cancer, cancer$sex ==1)
+survFemale <- subset(cancer, cancer$sex ==2)
+
+# turn gender to factor level
+survMale$sex<- as.factor('male')
+survFemale$sex <- as.factor('female')
+
+# build survival model for each gender
+survMaleModel <- survfit(formula = Surv(time, status ==2) ~ 1, data = survMale)
+survFemaleModel <- survfit(formula = Surv(time, status == 2) ~ 1, data = survFemale)
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# store probability in variable for kable output
+maleSurvRate <- summary(survMaleModel, time = 300)[6]
+femaleSurvRate <- summary(survFemaleModel, time = 300)[6]
+
+# combine reults to table for output formatting
+survDF <- cbind(maleSurvRate, femaleSurvRate)
+
+kable(survDF, row.names = FALSE, col.names = c('Male', 'Female'), caption = 'Probability 300+ Days of Survival by Gender')
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# turn gender to factor
+cancer$sex <- as.factor(cancer$sex)
+
+# get p value from lgorank test and output
+cancerPVal <- pvalue(logrank_test(Surv(time, status == 2) ~ sex, data = cancer))
+
+kable(cancerPVal, col.names = 'P-Value', caption = 'P-Value of Survival Significance by Gender')
+
+
+```
+    
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+
+# base R plot of survival probability by gender
+layout(matrix(c(1:2), ncol = 2))
+plot(survMaleModel, xlab = 'Time (Days)', ylab = 'Survival Probability', main = 'Probability of Survival by # of Days - Male',
+     col = c('black','red','red'))
+legend('topright', c('Survival by # of Days', 'CI Limits'), col = c('black','red','red'), lty = c(1,2,2))
+
+plot(survFemaleModel, xlab = 'Time (Days)', ylab = 'Survival Probability', main = 'Probability of Survival by # of Days - Female',
+     col = c('black','red','red'))
+legend('topright', c('Survival by # of Days', 'CI Limits'), col = c('black','red','red'), lty = c(1,2,2))
+```
+    
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+
+#replicate prior plot with ggsurvplot
+ggsurvplot(survMaleModel, data = survMale, conf.int = TRUE, palette = c('black'),
+           title = 'Probability of Survival by # of Days - Male')
+
+
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# replicate prior plot with ggsurvplot
+ggsurvplot(survFemaleModel, data = survFemale, conf.int = TRUE, palette = c('black'),
+           title = 'Probability of Survival by # of Days - Female')
+```
+
+\pagebreak
+
+## Cox Proportional Hazard Regression
+
+```{r, echo = FALSE}
+# get surmmary of cox hazard regression
+coxHazard <- coxph(Surv(time, status ==2) ~., data = cancer)
+summary(coxHazard)
+
+```
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# plot conditional inference tree
+decTree <- ctree(Surv(time, status ==2) ~., data = cancer)
+plot(decTree)
+
+```
+
+d. Is there a difference in the survival rates for the older half of the group versus the younger half? Provide a formal statistical test with a p-value and visual evidence.
+
+After finding the median age, the data was split into to subsets, 'older' and 'younger', with survfit() applied to each. Surprisingly, there is not a significant impact on survival rate according to the model with a p-value at .17. With the median age at 63, I was a little on the edge of whether that is a high enough age where the study looking at survival of 300 days would be impacted signifcantally at that age.
+    
+```{r, echo = FALSE}
+
+#find median age
+medianAge <- median(cancer$age)
+
+# split data between above and below median age
+cancer$ageLevel <- ifelse(cancer$age > medianAge, 'older','younger')
+cancer$ageLevel <- as.factor(cancer$ageLevel)
+
+
+olderDF <- subset(cancer, cancer$ageLevel == 'older')
+youngerDF <- subset(cancer, cancer$ageLevel =='younger')
+
+# build model on both age groups
+olderSurvModel <- survfit(formula = Surv(time, status ==2) ~ 1, data = olderDF)
+youngerSurvModel <- survfit(formula = Surv(time, status == 2) ~ 1, data = youngerDF)
+
+```
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+
+# get summaries and put into table for kable output comparison
+olderSurvRate <- summary(olderSurvModel, time = 300)[6]
+youngerSurvRate <- summary(youngerSurvModel, time = 300)[6]
+
+survDF2 <- cbind(olderSurvRate, youngerSurvRate)
+
+kable(survDF2, row.names = FALSE, col.names = c('Older', 'Younger'), caption = 'Probability 300+ Days of Survival by Age Group')
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+
+# calc pval with logrank test for agelevel
+cancerPVal2 <- pvalue(logrank_test(Surv(time, status == 2) ~ ageLevel, data = cancer))
+
+kable(cancerPVal2, col.names = 'P-Value', caption = 'P-Value of Survival Significance by Age Group')
+```
+
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+
+# base R plot of age differnece survival 
+layout(matrix(c(1:2), ncol = 2))
+plot(youngerSurvModel, xlab = 'Time (Days)', ylab = 'Survival Probability', main = 'Probability of Survival by # of Days - Younger',
+     col = c('black','red','red'))
+legend('topright', c('Survival by # of Days', 'CI Limits'), col = c('black','red','red'), lty = c(1,2,2))
+
+plot(olderSurvModel, xlab = 'Time (Days)', ylab = 'Survival Probability', main = 'Probability of Survival by # of Days - Older',
+     col = c('black','red','red'))
+legend('topright', c('Survival by # of Days', 'CI Limits'), col = c('black','red','red'), lty = c(1,2,2))
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+
+# replicate base R pltos
+ggsurvplot(youngerSurvModel, data = youngerDF, conf.int = TRUE, palette = c('black'),
+           title = 'Probability of Survival by # of Days - Younger')
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+
+# replicate Base R plot
+ggsurvplot(olderSurvModel, data = olderDF, conf.int = TRUE, palette = c('black'),
+           title = 'Probability of Survival by # of Days - Older')
+```
+
+2. A healthcare group has asked you to analyse the \textbf{mastectomy} data from the \textbf{HSAUR3} package, which is the survival times (in months) after a mastectomy of women with breast cancer. The cancers are classified as having metastasized or not based on a histochemical marker. The healthcare group requests that your report should not be longer than one page, and must only consist of one plot, one table, and one paragraph. Do the following:
+
+a. Plot the survivor functions of each group only using GGPlot, estimated using the Kaplan-Meier estimate.
+    
+```{r, echo = FALSE, fig.width=10, fig.height=5}
+# load data
+data(mastectomy)
+
+# make event binary
+mastectomy$event <- ifelse(mastectomy$event == TRUE, 2, 1)
+
+# build surv movel on data
+mastectomySurv <- survfit(formula = Surv(time, event == 2) ~ metastasized, data = mastectomy)
+#head(mastectomy)
+
+```
+
+```{r, echo = FALSE, fig.width=10, fig.height = 5}
+# plot output
+ggsurvplot(mastectomySurv, data = mastectomy, conf.int = TRUE,
+           title = 'Mastectomy Survival')
+```
+
+b. Use a log-rank test to compare the survival experience of each group more formally. Only present a formal table of your results. 
+
+```{r, echo = FALSE}
+# build lograndtuest and output sumamry
+logrank_test(Surv(time, event == 2)~ metastasized, data = mastectomy)
+
+```
+
+    
+c. Write one paragraph summarizing your findings and conclusions. 
+
+The P-Value is not significant at the level of .05 and our null hypothesis can be rejected. Looking at the graph the survival probability is higher when not having metastasized in comparison to having metastasized. However, when looking at the plot, we can see that the range at a 95% confidence interval is very large not having metastasized in comparison to the range of the having metastasized. If we were testing the hypothesis at a different level, .1 for example, our final determination would be that there is not enough evidence to reject the null hypothesis with a p-value of .06194. With this model being applied to a health situation, especially regarding survival, I believe further studies be performed to explore this topic.
