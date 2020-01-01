@@ -1,0 +1,315 @@
+---
+title: "Effects of High- and Low-Velocity Resistance Training"
+author: "Andrew Boschee"
+#date: "12/6/2019"
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=F,warning=F,echo=F,fig_height=10,fig_width=7,cache = F)
+```
+
+```{r, echo = FALSE}
+library(ggplot2)
+library(knitr)
+library(ISLR)
+library(HSAUR3)
+library(gridExtra)
+library(dplyr)
+library(tidyr)
+library(gee)
+library(geepack)
+library(Matrix)
+library(stats)
+#install.packages('MuMIn')
+library(MuMIn)
+#install.packages('MESS')
+library(MESS)
+library(lme4)
+library(multcomp)
+library(GGally)
+library(plotrix)
+library(reshape)
+```
+
+
+Since this is regarding physical activity, I feel that age will carry significant importance along with gender. One concern that I have immediately is how often the measurements are taken and any other outside conflicts that could be impacting peoples ability to perform some of the activities. I will assume that all subjects have a similar schedule of measurements and exercise frequency.Immediately, data from both data sets is merged using the 'id' variable and the merge.data.frame() function. Second, subsets are made for young vs old and subsets are then made for low vs high intensity.
+To verify balance of data, basic plots were made to compare counts of gender, age group, fiber type, and training type. There are slightly more females but I believe the data is well-balanced.
+
+```{r, echo = FALSE}
+#experimentalData <- read.csv("STAT 601/prog.res.trn.csv")
+#subjectData <- read.csv('STAT 601/prog.res.trn.subs.csv')
+
+# load csv files
+experimentalData <- read.csv("prog.res.trn.csv")
+subjectData <- read.csv('prog.res.trn.subs.csv')
+
+experimentalData <- as.data.frame(experimentalData)
+subjectData <- as.data.frame(subjectData)
+
+#head(experimentalData)
+#head(subjectData)
+```
+
+```{r, echo = FALSE}
+#summary(experimentalData)
+#summary(subjectData)
+```
+
+
+
+```{r, echo=FALSE}
+# merge datasets
+combinedDf <- merge.data.frame(experimentalData, subjectData, by = 'id')
+
+#head(combinedDf,50)
+```
+
+```{r, echo = FALSE}
+#combinedDf <- combinedDf[-2]
+#head(combinedDf)
+
+```
+
+```{r, echo = FALSE}
+# subset data by age grouping
+youngDf <- subset.data.frame(combinedDf, age.f == 'Young')
+oldDf <- subset.data.frame(combinedDf, age.f == 'Old')
+
+# add counting for each row per individual
+youngDf$num <- sequence(rle(youngDf$X.y)$lengths)
+oldDf$num <- sequence(rle(oldDf$X.y)$lengths)
+combinedDf$num <- sequence(rle(combinedDf$X.y)$lengths)
+```
+
+```{r, echo = FALSE}
+
+# subset by intensity
+youngDfLow <- subset.data.frame(youngDf, prt.f == 'Low')
+youngDfHigh <- subset.data.frame(youngDf, prt.f == 'High')
+
+oldDfLow <- subset.data.frame(oldDf, prt.f == 'Low')
+oldDfHigh <- subset.data.frame(oldDf, prt.f == 'High')
+
+```
+
+```{r, echo = FALSE, fig.height=2, fig.width=7}
+layout(matrix(1:4, ncol=4))
+plot(combinedDf$sex.f ,main = 'Gender Summary', xlab = 'Gender', ylab = 'Count')
+plot(combinedDf$age.f, main = 'Age Summary', xlab = 'Age Group', ylab = 'Count')
+plot(combinedDf$fiber.f, main = 'Fiber Type Summary', xlab = 'Fiber Type', ylab = 'Count')
+plot(combinedDf$prt.f, main = 'Training Type', xlab = 'Training', ylab = 'Count')
+```
+
+## Force Changes Over Time
+Grouping by individuals, we can see the measurements of Isometric Force over time by age and training intensity. This didn't show as much difference as I had expected so I commented out the plots of Specific Force since they don't give much more insight. A couple things we can pull from these plots are that there are more measurements for old subjects in comparison to young subjects. There may have been some dropouts or possibly more training sessions.
+
+```{r, echo = FALSE, fig.height=3, fig.width=10, eval = FALSE}
+grid.arrange(
+ggplot(youngDfLow, aes(x=num, y=iso.fo))+
+  geom_boxplot(aes(group = num))+
+  stat_summary(fun.y = 'mean', geom = 'point', shape = 23, size = 1, fill = 'red')+
+  labs(title = 'Isometric Force - Young Subjects with Low Intensity', x='Time', y='Isometric Force'),
+ggplot(youngDfHigh, aes(x=num, y=iso.fo))+
+  geom_boxplot(aes(group = num))+
+  stat_summary(fun.y = 'mean', geom = 'point', shape = 23, size = 1, fill = 'red')+
+  labs(title = 'Isometric Force - Young Subjects with High Intensity', x = 'Time', y = 'Isometric Force'),
+nrow = 2)
+```
+
+
+```{r, echo = FALSE, fig.height = 4, fig.width = 10}
+grid.arrange(
+ggplot(oldDfLow, aes(x=num, y=iso.fo))+
+  geom_boxplot(aes(group = num))+
+  stat_summary(fun.y = 'mean', geom = 'point', shape = 23, size = 1, fill = 'red')+
+  labs(title = 'Isometric Force - Old Subjects with Low Intensity', x = 'Time', y= 'Isometric Force'),
+
+ggplot(oldDfHigh, aes(x=num, y=iso.fo))+
+  geom_boxplot(aes(group = num))+
+  stat_summary(fun.y = 'mean', geom = 'point', shape = 23, size = 1, fill = 'red')+
+  labs(title = 'Isometric Force - Old Subjects with High Intensity', x = 'Time', y= 'Isometric Force'),
+nrow=2)
+
+```
+
+```{r, echo = FALSE, fig.height=5, fig.width=10, eval = FALSE}
+grid.arrange(
+ggplot(youngDfLow, aes(x=num, y=spec.fo))+
+  geom_boxplot(aes(group = num))+
+  stat_summary(fun.y = 'mean', geom = 'point', shape = 23, size = 1, fill = 'red')+
+  labs(title = 'Specific Force - Young Subjects with Low Intensity', x='Time', y='Specific Force'),
+
+ggplot(youngDfHigh, aes(x=num, y=spec.fo))+
+  geom_boxplot(aes(group = num))+
+  stat_summary(fun.y = 'mean', geom = 'point', shape = 23, size = 1, fill = 'red')+
+  labs(title = 'Specific Force - Young Subjects with High Intensity', x = 'Time', y = 'Specific Force'),
+ nrow=2)
+```
+
+```{r, echo = FALSE, fig.height= 5, fig.width= 10, eval = FALSE}
+grid.arrange(
+ggplot(oldDfLow, aes(x=num, y=spec.fo))+
+  geom_boxplot(aes(group = num))+
+  stat_summary(fun.y = 'mean', geom = 'point', shape = 23, size = 1, fill = 'red')+
+  labs(title = 'Specific Force - Old Subjects with Low Intensity', x = 'Time', y= 'Specific Force'),
+
+ggplot(oldDfHigh, aes(x=num, y=spec.fo))+
+  geom_boxplot(aes(group = num))+
+  stat_summary(fun.y = 'mean', geom = 'point', shape = 23, size = 1, fill = 'red')+
+  labs(title = 'Specific Force - Old Subjects with High Intensity', x = 'Time', y= 'Specific Force')
+  ,nrow=2)
+
+```
+
+## Force Change Relative to Fiber Type, Training Velocity, and Age
+
+### Specific Force
+
+```{r, echo = FALSE, fig.height= 5, fig.width= 10}
+
+grid.arrange(
+ggplot(youngDfHigh, aes(x=spec.fo, y=id, color=fiber.f))+
+  geom_point(aes(alpha=0.2))+
+  scale_colour_discrete(name = 'Fiber Type')+
+  scale_alpha(guide = FALSE)+
+  labs(title = 'Young - Specific Force of Fiber Type\n      by High Training Individual', x = 'Specific Force', y = 'Subject ID'),
+ggplot(youngDfLow, aes(x=spec.fo, y=id, color=fiber.f))+
+  geom_point(aes(alpha=0.2))+
+  scale_colour_discrete(name = 'Fiber Type')+
+  scale_alpha(guide = FALSE)+
+  labs(title = 'Young - Specific Force of Fiber Type\n      by Low Training Individual', x = 'Specific Force', y = 'Subject ID'),
+ggplot(oldDfHigh, aes(x=spec.fo, y=id, color=fiber.f))+
+  geom_point(aes(alpha=0.2))+
+  scale_alpha(guide = FALSE)+
+  scale_colour_discrete(name = 'Fiber Type')+
+  labs(title = 'Old - Specific Force of Fiber Type\n        by High Training Individual', x = 'Specific Force', y = 'Subject ID'),
+ggplot(oldDfLow, aes(x=spec.fo, y=id, color=fiber.f))+
+  geom_point(aes(alpha=0.2))+
+  scale_alpha(guide = FALSE)+
+  scale_colour_discrete(name = 'Fiber Type')+
+  labs(title = 'Old - Specific Force of Fiber Type\n        by Low Training Individual', x = 'Specific Force', y = 'Subject ID'),
+nrow=2)
+```
+
+### Isometric Force
+
+```{r, echo = FALSE, fig.height= 5, fig.width= 10}
+# plots comparing isometric force for fiber type and training level
+grid.arrange(
+ggplot(youngDfHigh, aes(x=iso.fo, y=id, color=fiber.f))+
+  geom_point(aes(alpha=0.2))+
+  scale_colour_discrete(name = 'Fiber Type')+
+  scale_alpha(guide = FALSE)+
+  labs(title = 'Young - Isometric Force of Fiber Type\n      by High Training Individual', x = 'Isometric Force', y = 'Subject ID'),
+ggplot(youngDfLow, aes(x=iso.fo, y=id, color=fiber.f))+
+  geom_point(aes(alpha=0.2))+
+  scale_colour_discrete(name = 'Fiber Type')+
+  scale_alpha(guide = FALSE)+
+  labs(title = 'Young - Isometric Force of Fiber Type\n      by Low Training Individual', x = 'Isometric Force', y = 'Subject ID'),
+ggplot(oldDfHigh, aes(x=iso.fo, y=id, color=fiber.f))+
+  geom_point(aes(alpha=0.2))+
+  scale_colour_discrete(name = 'Fiber Type')+
+  scale_alpha(guide = FALSE)+
+  labs(title = 'Old - Isometric Force of Fiber Type\n        by High Training Individual', x = 'Isometric Force', y = 'Subject ID'),
+ggplot(oldDfLow, aes(x=iso.fo, y=id, color=fiber.f))+
+  geom_point(aes(alpha=0.2))+
+  scale_colour_discrete(name = 'Fiber Type')+
+  scale_alpha(guide = FALSE)+
+  labs(title = 'Old - Isometric Force of Fiber Type\n        by Low Training Individual', x = 'Isometric Force', y = 'Subject ID'),
+nrow=2)
+```
+
+
+
+The other variable that came to mind to dig into was fiber type since certain exercise types focus on different muscle fiber types. With young subjects, we see that fiber type isn't clearly separated like it is for older individuals. Also, type2 muscle fibers have higher force measurements in older individuals, but seems to be the opposite with young subjects where type1 measurements are on the higher end. However regarding specific force, both age groups have higher measures of force with type 2 fibers in comparison to type 1 fibers.
+
+## Isometric Force Model Comparison
+
+```{r, echo = FALSE}
+# filter out un-needed columns
+combinedDf2 <- combinedDf[c(3,4,5,6,8,9,10,11,12)]
+youngDf2 <- youngDf[c(3,4,5,6,8,9,10,11,12)]
+youngDf2 <- as.data.frame(youngDf2)
+# linear model for iso.fo as dependent variable
+isoForce <- lm(iso.fo ~ spec.fo + occ.f + prt.f + bmi + sex.f + age.f + fiber.f, data = combinedDf2)
+isoForceSumm <- as.data.frame(summary(isoForce)$coef)
+
+rownames(isoForceSumm) <- c('Intercept','Specific Force','Pre/Post','Intensity','BMI','Gender','Age', 'Fiber Type')
+kable(isoForceSumm[2:8,], caption = 'Isometric Force Model Summary')
+#model from lecture
+isoForceLmer1 <- lmer(iso.fo ~ . + (1|num), data=combinedDf2, REML = FALSE, na.action = na.omit)
+```
+
+```{r, echo = FALSE}
+# anova function to compare models
+anova2 <- as.data.frame(anova(isoForceLmer1, isoForce))
+rownames(anova2) <- c('LM','LMER')
+kable(anova2, caption = 'ANOVA Comparison - LM vs. LMER')
+
+```
+
+```{r, echo = FALSE}
+#cftest(isoForceLmer1)
+```
+
+## Specific Force Model Comparison
+
+```{r, echo = FALSE}
+# linear model with spec.fo as dependent variable
+specForce <- lm(spec.fo ~ iso.fo + occ.f + prt.f + bmi + sex.f + age.f + fiber.f, data = combinedDf2)
+
+specForceSumm <- as.data.frame(summary(specForce)$coef)
+
+rownames(specForceSumm) <- c('Intercept','Isometrice Force','Pre/Post Measure','Intensity','BMI','Gender','Age','Fiber Type')
+
+kable(specForceSumm[2:8,], caption = 'Specific Force Model Summary')
+#model from lecture
+specForceLmer1 <- lmer(spec.fo ~ . + (1|num), data=combinedDf2, REML = FALSE, na.action = na.omit)
+
+anova1 <- anova(specForceLmer1, specForce)
+anova1 <- as.data.frame(anova1)
+
+
+rownames(anova1) <- c('LM','LMER')
+
+
+# anova function to compare models
+kable(anova1, caption = 'ANOVA Comparison - LM vs. LMER')
+
+```
+
+When comparing results between the two models with differing dependent variables, we can see that more variables are seen as statistically significant when it comes to impact on isometric force in comparison to Specific Force. Neither model sees intensity level as significant, but both see gender, age, and the opposing force as signficant. BMI is significant regarding Isometric Force, but not Specific Force. At significance level of .05, both forces see fiber type as significant but only Specific Force would see it as signficant at a lower threshold.
+Lastly, analyzing AIC, BIC, and P-values, applying the linear-mixed model showed significance when used for Specific Force, but not regarding Isometric Force.
+
+```{r, echo = FALSE}
+#cftest(specForceLmer1)
+```
+
+
+
+```{r, echo = FALSE, fig.height= 5, fig.width= 10, eval = FALSE}
+# plot residuals
+residuals <- function(object, observed) observed - predict(object)
+layout(matrix(1:2, ncol = 2))
+
+qres <- residuals(specForceLmer1, combinedDf2$spec.fo)
+qqnorm(qres, xlim=c(-4,4), ylim=c(-300,300),
+       ylab = 'Estimated Residuals',
+       main = 'Specific Force Mixed-Model Residuals')
+qqline(qres, col = 'red', lwd=3)
+
+
+#layout(matrix(1:2, ncol = 2))
+qres <- residuals(isoForceLmer1, combinedDf2$iso.fo)
+qqnorm(qres, xlim=c(-4,4), ylim=c(-10,10),
+       ylab = 'Estimated Residuals',
+       main = 'Isometric Force Mixed-Model Residuals')
+qqline(qres, col = 'red', lwd=3)
+
+```
+
+
+*Outside Resources: rdocumentation.com, sthda.com, Linear-Mixed Models with Examples in R*
+
